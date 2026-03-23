@@ -42,15 +42,19 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
     rng_seed((uint64_t)time(NULL));
 
     double scale_radius = disk_radius / 4.0;
+    double scale_height = disk_radius * 0.02; // thin disk vertical extent
     double total_mass = 0.0;
 
     // Central massive body
     bodies[0].x = cx;
     bodies[0].y = cy;
+    bodies[0].z = 0.0;
     bodies[0].vx = vx_bulk;
     bodies[0].vy = vy_bulk;
+    bodies[0].vz = 0.0;
     bodies[0].ax = 0.0;
     bodies[0].ay = 0.0;
+    bodies[0].az = 0.0;
     bodies[0].mass = galaxy_mass * 0.01;
     total_mass += bodies[0].mass;
 
@@ -64,6 +68,7 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
 
         bodies[i].x = cx + r * cos(theta);
         bodies[i].y = cy + r * sin(theta);
+        bodies[i].z = rng_gaussian() * scale_height;
 
         // Mass: mostly uniform, a few heavy bodies
         if (rng_uniform() < 0.01) {
@@ -88,8 +93,10 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
 
         bodies[i].vx = vx_bulk - vt * sin(theta) + vr * cos(theta);
         bodies[i].vy = vy_bulk + vt * cos(theta) + vr * sin(theta);
+        bodies[i].vz = rng_gaussian() * dispersion * 0.1;
         bodies[i].ax = 0.0;
         bodies[i].ay = 0.0;
+        bodies[i].az = 0.0;
     }
 }
 

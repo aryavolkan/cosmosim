@@ -36,17 +36,28 @@ find_package(OpenMP)
 # Shader directory define
 add_definitions(-DSHADER_DIR="${CMAKE_SOURCE_DIR}/src/shaders/")
 
+# Physics-only library (no renderer, no main — used by tests)
+add_library(cosmosim_physics STATIC
+    src/octree.c
+    src/integrator.c
+    src/initial_conditions.c
+)
+target_include_directories(cosmosim_physics PUBLIC src)
+target_link_libraries(cosmosim_physics PRIVATE m)
+if(OpenMP_C_FOUND)
+    target_link_libraries(cosmosim_physics PRIVATE OpenMP::OpenMP_C)
+endif()
+
 # Main executable
 add_executable(cosmosim
     src/main.c
-    src/quadtree.c
-    src/integrator.c
     src/renderer.c
-    src/initial_conditions.c
 )
 
-target_link_libraries(cosmosim PRIVATE glad glfw m dl)
+target_link_libraries(cosmosim PRIVATE cosmosim_physics glad glfw m dl)
 
-if(OpenMP_C_FOUND)
-    target_link_libraries(cosmosim PRIVATE OpenMP::OpenMP_C)
-endif()
+# Tests
+enable_testing()
+add_executable(test_physics tests/test_physics.c)
+target_link_libraries(test_physics PRIVATE cosmosim_physics m)
+add_test(NAME physics_tests COMMAND test_physics)

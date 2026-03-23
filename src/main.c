@@ -1,12 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
 #include "body.h"
-#include "quadtree.h"
+#include "octree.h"
 #include "integrator.h"
 #include "renderer.h"
 #include "initial_conditions.h"
@@ -20,18 +21,19 @@
 #define WINDOW_WIDTH    1280
 #define WINDOW_HEIGHT   800
 
-static Camera camera = {0.0f, 0.0f, 50.0f};
+static Camera camera = {0.8f, 0.6f, 80.0f, 0.0f, 0.0f, 0.0f};
 static int paused = 0;
 static double last_cursor_x, last_cursor_y;
-static int dragging = 0;
+static int dragging_left = 0;
+static int dragging_right = 0;
 
 static void scroll_callback(GLFWwindow *window, double xoff, double yoff)
 {
     (void)window;
     (void)xoff;
-    camera.zoom *= (float)(1.0 - 0.1 * yoff);
-    if (camera.zoom < 0.01f) camera.zoom = 0.01f;
-    if (camera.zoom > 10000.0f) camera.zoom = 10000.0f;
+    camera.distance *= (float)(1.0 - 0.1 * yoff);
+    if (camera.distance < 1.0f) camera.distance = 1.0f;
+    if (camera.distance > 100000.0f) camera.distance = 100000.0f;
 }
 
 static void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
@@ -39,29 +41,66 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action, in
     (void)mods;
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
-            dragging = 1;
+            dragging_left = 1;
             glfwGetCursorPos(window, &last_cursor_x, &last_cursor_y);
         } else {
-            dragging = 0;
+            dragging_left = 0;
+        }
+    }
+    if (button == GLFW_MOUSE_BUTTON_RIGHT || button == GLFW_MOUSE_BUTTON_MIDDLE) {
+        if (action == GLFW_PRESS) {
+            dragging_right = 1;
+            glfwGetCursorPos(window, &last_cursor_x, &last_cursor_y);
+        } else {
+            dragging_right = 0;
         }
     }
 }
 
 static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
 {
-    if (!dragging) return;
-
-    int w, h;
-    glfwGetWindowSize(window, &w, &h);
+    if (!dragging_left && !dragging_right) return;
 
     double dx = xpos - last_cursor_x;
     double dy = ypos - last_cursor_y;
     last_cursor_x = xpos;
     last_cursor_y = ypos;
 
-    float aspect = (float)w / (float)h;
-    camera.offset_x -= (float)(dx / w * 2.0 * camera.zoom * aspect);
-    camera.offset_y += (float)(dy / h * 2.0 * camera.zoom);
+    if (dragging_left) {
+        // Orbit: left-drag rotates the camera
+        camera.azimuth -= (float)(dx * 0.005);
+        camera.elevation += (float)(dy * 0.005);
+        // Clamp elevation to avoid gimbal lock
+        float limit = 1.5f; // ~86 degrees
+        if (camera.elevation > limit) camera.elevation = limit;
+        if (camera.elevation < -limit) camera.elevation = -limit;
+    }
+
+    if (dragging_right) {
+        // Pan: right/middle-drag moves the target
+        int w, h;
+        glfwGetWindowSize(window, &w, &h);
+        float scale = camera.distance * 0.002f;
+
+        // Pan in the camera's local right and up directions
+        float cos_az = cosf(camera.azimuth);
+        float sin_az = sinf(camera.azimuth);
+
+        // Right vector (in XY plane)
+        float rx = -sin_az;
+        float ry =  cos_az;
+
+        // Up vector (simplified, based on elevation)
+        float cos_el = cosf(camera.elevation);
+        float sin_el = sinf(camera.elevation);
+        float ux = -sin_el * cos_az;
+        float uy = -sin_el * sin_az;
+        float uz =  cos_el;
+
+        camera.target_x += (float)(-dx * scale) * rx + (float)(dy * scale) * ux;
+        camera.target_y += (float)(-dx * scale) * ry + (float)(dy * scale) * uy;
+        camera.target_z += (float)(dy * scale) * uz;
+    }
 }
 
 static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
@@ -72,6 +111,15 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 
     if (key == GLFW_KEY_SPACE) paused = !paused;
     if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, 1);
+    // Reset camera
+    if (key == GLFW_KEY_R) {
+        camera.azimuth = 0.8f;
+        camera.elevation = 0.6f;
+        camera.distance = 80.0f;
+        camera.target_x = 0.0f;
+        camera.target_y = 0.0f;
+        camera.target_z = 0.0f;
+    }
 }
 
 static void framebuffer_size_callback(GLFWwindow *window, int width, int height)
@@ -104,8 +152,10 @@ int main(int argc, char **argv)
                    "  -t <theta>    Barnes-Hut opening angle (default %.1f)\n"
                    "\nControls:\n"
                    "  Scroll        Zoom in/out\n"
-                   "  Left-drag     Pan\n"
+                   "  Left-drag     Orbit camera\n"
+                   "  Right-drag    Pan\n"
                    "  Space         Pause/resume\n"
+                   "  R             Reset camera\n"
                    "  Q/Esc         Quit\n", DEFAULT_N, DT, THETA);
             return 0;
         }
@@ -156,9 +206,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Allocate bodies and quadtree pool
+    // Allocate bodies and octree pool
     Body *bodies = calloc(n, sizeof(Body));
-    QuadTreeNode *pool = malloc(8 * n * sizeof(QuadTreeNode)); // generous pool
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
 
     if (!bodies || !pool) {
         fprintf(stderr, "Failed to allocate memory\n");
@@ -175,7 +225,7 @@ int main(int argc, char **argv)
     // Compute initial accelerations
     integrator_init_accelerations(bodies, n, G, SOFTENING, theta, pool);
 
-    printf("Simulation running. Press Space to pause, Q to quit.\n");
+    printf("Simulation running. Press Space to pause, Q to quit, R to reset camera.\n");
 
     // FPS counter
     double fps_time = glfwGetTime();
