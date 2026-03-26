@@ -233,7 +233,13 @@ int main(int argc, char **argv)
     glfwSetKeyCallback(window, key_callback);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
-    if (renderer_init() != 0) {
+    RendererConfig rcfg;
+    memset(&rcfg, 0, sizeof(rcfg));
+    rcfg.hdr_enabled = quasar;
+    rcfg.bloom_iterations = high_fidelity ? 4 : 2;
+    rcfg.lensing_samples = high_fidelity ? 4 : 1;
+
+    if (renderer_init(&rcfg) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
         glfwTerminate();
         return 1;
@@ -307,7 +313,10 @@ int main(int argc, char **argv)
 
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
-        renderer_draw(bodies, current_n, &camera, w, h);
+        if (quasar) {
+            renderer_update_smbh(&rcfg, bodies, current_n);
+        }
+        renderer_draw(bodies, current_n, &camera, w, h, &rcfg);
         glfwSwapBuffers(window);
 
         // FPS display
