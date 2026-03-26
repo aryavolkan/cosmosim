@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <sys/stat.h>
 
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -25,6 +26,61 @@
 #define DEFAULT_ACCRETION_RADIUS   3.0
 #define DEFAULT_JET_SPEED          20.0
 #define DEFAULT_FEEDBACK_STRENGTH  1.0
+#define DEFAULT_RENDER_WIDTH       1920
+#define DEFAULT_RENDER_HEIGHT      1080
+#define DEFAULT_RENDER_FRAMES      1000
+#define DEFAULT_RENDER_SUBSTEPS    8
+#define DEFAULT_RENDER_ORBIT_SPEED 0.003f
+
+/* ---- Offline rendering helpers ---- */
+
+static GLuint render_fbo, render_color_tex, render_depth_rbo;
+
+static int setup_render_fbo(int width, int height)
+{
+    glGenFramebuffers(1, &render_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, render_fbo);
+
+    glGenTextures(1, &render_color_tex);
+    glBindTexture(GL_TEXTURE_2D, render_color_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, render_color_tex, 0);
+
+    glGenRenderbuffers(1, &render_depth_rbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, render_depth_rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, render_depth_rbo);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "Render FBO incomplete\n");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return -1;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return 0;
+}
+
+static int save_ppm(const char *path, int width, int height, const unsigned char *pixels)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    fprintf(f, "P6\n%d %d\n255\n", width, height);
+    /* OpenGL gives bottom-up; write top-down */
+    for (int y = height - 1; y >= 0; y--) {
+        const unsigned char *row = pixels + y * width * 4;
+        for (int x = 0; x < width; x++) {
+            fputc(row[x * 4 + 0], f);
+            fputc(row[x * 4 + 1], f);
+            fputc(row[x * 4 + 2], f);
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+/* ---- Interactive mode globals ---- */
 
 static Camera camera = {0.8f, 0.6f, 80.0f, 0.0f, 0.0f, 0.0f};
 static int paused = 0;
@@ -146,6 +202,14 @@ int main(int argc, char **argv)
     double jet_speed = DEFAULT_JET_SPEED;
     double feedback_strength = DEFAULT_FEEDBACK_STRENGTH;
 
+    /* Offline render options */
+    const char *render_dir = NULL;
+    int render_width = DEFAULT_RENDER_WIDTH;
+    int render_height = DEFAULT_RENDER_HEIGHT;
+    int render_frames = DEFAULT_RENDER_FRAMES;
+    int render_substeps = DEFAULT_RENDER_SUBSTEPS;
+    float orbit_speed = DEFAULT_RENDER_ORBIT_SPEED;
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
             n = atoi(argv[++i]);
@@ -167,6 +231,18 @@ int main(int argc, char **argv)
             jet_speed = atof(argv[++i]);
         } else if (strcmp(argv[i], "--feedback-strength") == 0 && i + 1 < argc) {
             feedback_strength = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--render") == 0 && i + 1 < argc) {
+            render_dir = argv[++i];
+        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            render_frames = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--width") == 0 && i + 1 < argc) {
+            render_width = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--height") == 0 && i + 1 < argc) {
+            render_height = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--render-substeps") == 0 && i + 1 < argc) {
+            render_substeps = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--orbit-speed") == 0 && i + 1 < argc) {
+            orbit_speed = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             printf("Usage: cosmosim [options]\n"
                    "  -n <count>              Number of bodies (default %d)\n"
@@ -179,22 +255,33 @@ int main(int argc, char **argv)
                    "  --accretion-radius <r>  Accretion radius (default %.1f)\n"
                    "  --jet-speed <v>         Jet particle speed (default %.1f)\n"
                    "  --feedback-strength <s> Feedback multiplier (default %.1f)\n"
-                   "\nControls:\n"
+                   "\nOffline rendering:\n"
+                   "  --render <dir>          Render frames to directory (PPM format)\n"
+                   "  --frames <n>            Number of frames (default %d)\n"
+                   "  --width <w>             Output width (default %d)\n"
+                   "  --height <h>            Output height (default %d)\n"
+                   "  --render-substeps <n>   Physics substeps per frame (default %d)\n"
+                   "  --orbit-speed <f>       Camera orbit speed in rad/frame (default %.3f)\n"
+                   "\nControls (interactive mode):\n"
                    "  Scroll        Zoom in/out\n"
                    "  Left-drag     Orbit camera\n"
                    "  Right-drag    Pan\n"
                    "  Space         Pause/resume\n"
                    "  R             Reset camera\n"
-                   "  Q/Esc         Quit\n",
+                   "  Q/Esc         Quit\n"
+                   "\nCombine frames into video:\n"
+                   "  ffmpeg -framerate 60 -i <dir>/frame_%%06d.ppm -c:v libx264 -pix_fmt yuv420p out.mp4\n",
                    DEFAULT_N, DT, THETA,
                    DEFAULT_SMBH_MASS_FRAC, DEFAULT_ACCRETION_RADIUS,
-                   DEFAULT_JET_SPEED, DEFAULT_FEEDBACK_STRENGTH);
+                   DEFAULT_JET_SPEED, DEFAULT_FEEDBACK_STRENGTH,
+                   DEFAULT_RENDER_FRAMES, DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT,
+                   DEFAULT_RENDER_SUBSTEPS, (double)DEFAULT_RENDER_ORBIT_SPEED);
             return 0;
         }
     }
 
     if (n < 2) n = 2;
-    int substeps = high_fidelity ? 8 : SUBSTEPS;
+    int substeps = render_dir ? render_substeps : (high_fidelity ? 8 : SUBSTEPS);
 
     printf("cosmosim: %d bodies, %s%s mode, dt=%.4f, theta=%.2f\n",
            n, merger ? "merger" : "galaxy", quasar ? " quasar" : "", dt, theta);
@@ -208,8 +295,12 @@ int main(int argc, char **argv)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
+    if (render_dir) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
-    GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "cosmosim", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(
+        render_dir ? render_width : WINDOW_WIDTH,
+        render_dir ? render_height : WINDOW_HEIGHT,
+        "cosmosim", NULL, NULL);
     if (!window) {
         fprintf(stderr, "Failed to create window\n");
         glfwTerminate();
@@ -217,7 +308,7 @@ int main(int argc, char **argv)
     }
 
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // vsync
+    glfwSwapInterval(render_dir ? 0 : 1);
 
     int version = gladLoadGL(glfwGetProcAddress);
     if (!version) {
@@ -235,9 +326,9 @@ int main(int argc, char **argv)
 
     RendererConfig rcfg;
     memset(&rcfg, 0, sizeof(rcfg));
-    rcfg.hdr_enabled = quasar;
-    rcfg.bloom_iterations = high_fidelity ? 4 : 2;
-    rcfg.lensing_samples = high_fidelity ? 4 : 1;
+    rcfg.hdr_enabled = quasar || render_dir;
+    rcfg.bloom_iterations = (render_dir || high_fidelity) ? 4 : 2;
+    rcfg.lensing_samples = (render_dir || high_fidelity) ? 4 : 1;
 
     if (renderer_init(&rcfg) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
@@ -286,16 +377,32 @@ int main(int argc, char **argv)
     int compact_counter = 0;
     int compact_interval = high_fidelity ? 60 : 120;
 
-    printf("Simulation running. Press Space to pause, Q to quit, R to reset camera.\n");
+    /* ---- Offline render mode ---- */
+    if (render_dir) {
+        mkdir(render_dir, 0755);
 
-    // FPS counter
-    double fps_time = glfwGetTime();
-    int fps_frames = 0;
+        if (setup_render_fbo(render_width, render_height) != 0) {
+            fprintf(stderr, "Failed to create render FBO\n");
+            return 1;
+        }
 
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
+        unsigned char *pixels = malloc(render_width * render_height * 4);
+        if (!pixels) {
+            fprintf(stderr, "Failed to allocate pixel buffer\n");
+            return 1;
+        }
 
-        if (!paused) {
+        Camera render_cam = {0.8f, 0.4f, 80.0f, 0.0f, 0.0f, 0.0f};
+
+        printf("Rendering %d frames at %dx%d to %s/\n",
+               render_frames, render_width, render_height, render_dir);
+        printf("Substeps per frame: %d, dt: %.4f, orbit speed: %.4f rad/frame\n",
+               substeps, dt, (double)orbit_speed);
+
+        double t_start = glfwGetTime();
+
+        for (int frame = 0; frame < render_frames; frame++) {
+            /* Physics */
             for (int sub = 0; sub < substeps; sub++) {
                 integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
                 if (quasar) {
@@ -309,26 +416,97 @@ int main(int argc, char **argv)
                     compact_counter = 0;
                 }
             }
+
+            /* Camera orbit */
+            render_cam.azimuth += orbit_speed;
+
+            /* Render to FBO */
+            if (quasar) {
+                renderer_update_smbh(&rcfg, bodies, current_n);
+            }
+            renderer_draw(bodies, current_n, &render_cam,
+                          render_width, render_height, &rcfg);
+
+            /* If HDR pipeline wrote to default FB (composite pass), read from it.
+               Otherwise the scene is in the default FB already. */
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glReadPixels(0, 0, render_width, render_height,
+                         GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+            /* Save frame */
+            char path[1024];
+            snprintf(path, sizeof(path), "%s/frame_%06d.ppm", render_dir, frame);
+            save_ppm(path, render_width, render_height, pixels);
+
+            /* Progress */
+            if ((frame + 1) % 10 == 0 || frame == render_frames - 1) {
+                double elapsed = glfwGetTime() - t_start;
+                double fps = (frame + 1) / elapsed;
+                double eta = (render_frames - frame - 1) / fps;
+                printf("\r  frame %d/%d  (%.1f fps, ETA %.0fs)   ",
+                       frame + 1, render_frames, fps, eta);
+                fflush(stdout);
+            }
+
+            glfwPollEvents();
+            if (glfwWindowShouldClose(window)) break;
         }
 
-        int w, h;
-        glfwGetFramebufferSize(window, &w, &h);
-        if (quasar) {
-            renderer_update_smbh(&rcfg, bodies, current_n);
-        }
-        renderer_draw(bodies, current_n, &camera, w, h, &rcfg);
-        glfwSwapBuffers(window);
+        double total = glfwGetTime() - t_start;
+        printf("\nDone. %d frames in %.1fs (%.1f fps avg)\n",
+               render_frames, total, render_frames / total);
+        printf("Convert to video:\n  ffmpeg -framerate 60 -i %s/frame_%%06d.ppm "
+               "-c:v libx264 -pix_fmt yuv420p output.mp4\n", render_dir);
 
-        // FPS display
-        fps_frames++;
-        double now = glfwGetTime();
-        if (now - fps_time >= 1.0) {
-            char title[128];
-            snprintf(title, sizeof(title), "cosmosim | %d bodies | %.0f FPS%s",
-                     current_n, fps_frames / (now - fps_time), paused ? " [PAUSED]" : "");
-            glfwSetWindowTitle(window, title);
-            fps_frames = 0;
-            fps_time = now;
+        free(pixels);
+        glDeleteFramebuffers(1, &render_fbo);
+        glDeleteTextures(1, &render_color_tex);
+        glDeleteRenderbuffers(1, &render_depth_rbo);
+    } else {
+        /* ---- Interactive mode ---- */
+        printf("Simulation running. Press Space to pause, Q to quit, R to reset camera.\n");
+
+        double fps_time = glfwGetTime();
+        int fps_frames = 0;
+
+        while (!glfwWindowShouldClose(window)) {
+            glfwPollEvents();
+
+            if (!paused) {
+                for (int sub = 0; sub < substeps; sub++) {
+                    integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
+                    if (quasar) {
+                        quasar_step(bodies, &current_n, n_alloc, &qcfg, dt);
+                    }
+                }
+                if (quasar) {
+                    compact_counter++;
+                    if (compact_counter >= compact_interval) {
+                        current_n = quasar_compact(bodies, current_n);
+                        compact_counter = 0;
+                    }
+                }
+            }
+
+            int w, h;
+            glfwGetFramebufferSize(window, &w, &h);
+            if (quasar) {
+                renderer_update_smbh(&rcfg, bodies, current_n);
+            }
+            renderer_draw(bodies, current_n, &camera, w, h, &rcfg);
+            glfwSwapBuffers(window);
+
+            fps_frames++;
+            double now = glfwGetTime();
+            if (now - fps_time >= 1.0) {
+                char title[128];
+                snprintf(title, sizeof(title), "cosmosim | %d bodies | %.0f FPS%s",
+                         current_n, fps_frames / (now - fps_time),
+                         paused ? " [PAUSED]" : "");
+                glfwSetWindowTitle(window, title);
+                fps_frames = 0;
+                fps_time = now;
+            }
         }
     }
 
