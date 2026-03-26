@@ -122,3 +122,56 @@ void generate_merger(Body *bodies, int n, double separation, double approach_vel
                            galaxy_mass * 0.7, disk_radius * 0.8,
                            -approach_vel, -approach_vel * 0.3);
 }
+
+void generate_quasar_galaxy(Body *bodies, int n, double cx, double cy,
+                            double galaxy_mass, double disk_radius,
+                            double vx_bulk, double vy_bulk,
+                            double smbh_mass_frac)
+{
+    // Generate base galaxy
+    generate_spiral_galaxy(bodies, n, cx, cy, galaxy_mass, disk_radius, vx_bulk, vy_bulk);
+
+    // Upgrade central body to SMBH
+    bodies[0].mass = galaxy_mass * smbh_mass_frac;
+    bodies[0].type = BODY_SMBH;
+    bodies[0].spin_x = 0.0;
+    bodies[0].spin_y = 0.0;
+    bodies[0].spin_z = 1.0;
+    bodies[0].accretion_rate = 0.0;
+    bodies[0].luminosity = 0.0;
+
+    // Pre-seed inner 20% as gas
+    double inner_radius_sq = (disk_radius * 0.2) * (disk_radius * 0.2);
+    for (int i = 1; i < n; i++) {
+        double dx = bodies[i].x - cx;
+        double dy = bodies[i].y - cy;
+        if (dx * dx + dy * dy < inner_radius_sq) {
+            bodies[i].type = BODY_GAS;
+        }
+    }
+}
+
+void generate_quasar_merger(Body *bodies, int n, double separation,
+                            double approach_vel, double smbh_mass_frac)
+{
+    int n1 = n / 2;
+    int n2 = n - n1;
+
+    double disk_radius = separation * 0.15;
+    double galaxy_mass = (double)n1 * 2.0;
+
+    // Galaxy 1: left, moving right
+    generate_quasar_galaxy(bodies, n1,
+                           -separation * 0.5, 0.0,
+                           galaxy_mass, disk_radius,
+                           approach_vel, approach_vel * 0.3,
+                           smbh_mass_frac);
+
+    // Galaxy 2: right, moving left (re-seed RNG for different structure)
+    rng_seed((uint64_t)time(NULL) + 12345);
+    generate_quasar_galaxy(bodies + n1, n2,
+                           separation * 0.5, 0.0,
+                           galaxy_mass * 0.7, disk_radius * 0.8,
+                           -approach_vel, -approach_vel * 0.3,
+                           smbh_mass_frac);
+}

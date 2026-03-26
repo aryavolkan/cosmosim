@@ -525,6 +525,29 @@ static int test_jet_spawn_direction(void)
     return 1;
 }
 
+static int test_quasar_galaxy_generation(void)
+{
+    int n = 500;
+    Body *bodies = calloc(n, sizeof(Body));
+    generate_quasar_galaxy(bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0, 0.0, 0.0, 0.05);
+
+    // Body 0 should be SMBH
+    ASSERT(bodies[0].type == BODY_SMBH, "first body should be SMBH");
+    ASSERT_NEAR(bodies[0].spin_z, 1.0, 1e-12, "SMBH spin should be +z");
+    ASSERT(bodies[0].mass > 0, "SMBH should have positive mass");
+
+    // Should have some GAS bodies in inner region
+    int gas_count = 0;
+    for (int i = 1; i < n; i++) {
+        if (bodies[i].type == BODY_GAS) gas_count++;
+        ASSERT(bodies[i].mass > 0, "all bodies should have positive mass");
+    }
+    ASSERT(gas_count > 0, "should have pre-seeded gas bodies");
+
+    free(bodies);
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -552,6 +575,9 @@ int main(void)
 
     // Dead body tests
     RUN_TEST(test_dead_body_skipping);
+
+    // Quasar initial conditions tests
+    RUN_TEST(test_quasar_galaxy_generation);
 
     // Quasar physics tests
     RUN_TEST(test_accretion_mass_conservation);
