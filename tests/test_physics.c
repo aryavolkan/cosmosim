@@ -75,6 +75,7 @@ static Body make_body(double x, double y, double z,
     b.x = x; b.y = y; b.z = z;
     b.vx = vx; b.vy = vy; b.vz = vz;
     b.mass = mass;
+    b.type = BODY_STAR;
     return b;
 }
 
