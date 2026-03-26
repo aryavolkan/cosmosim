@@ -388,6 +388,35 @@ static int test_galaxy_center_of_mass(void)
     return 1;
 }
 
+/* ---- dead body tests ---- */
+
+static int test_dead_body_skipping(void)
+{
+    Body bodies[3];
+    bodies[0] = make_body(0, 0, 0, 0, 0, 0, 10.0);
+    bodies[1] = make_body(5.0, 0, 0, 0, 0, 0, 0.0);  // dead
+    bodies[2] = make_body(-5.0, 0, 0, 0, 0, 0, 3.0);
+
+    OctreeNode *pool = malloc(24 * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, 3);
+
+    // Root mass should exclude dead body
+    ASSERT_NEAR(pool[0].total_mass, 13.0, 1e-12, "dead body should not contribute mass");
+
+    // Force on body 0 should only come from body 2
+    octree_compute_forces(pool, 0, bodies, 3, 1.0, 0.01, 0.0);
+    ASSERT(bodies[0].ax < 0, "body 0 should be pulled toward body 2 (-x)");
+
+    // Dead body should have zero acceleration
+    ASSERT_NEAR(bodies[1].ax, 0.0, 1e-12, "dead body should have zero ax");
+    ASSERT_NEAR(bodies[1].ay, 0.0, 1e-12, "dead body should have zero ay");
+    ASSERT_NEAR(bodies[1].az, 0.0, 1e-12, "dead body should have zero az");
+
+    free(pool);
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -412,6 +441,9 @@ int main(void)
     // Initial conditions tests
     RUN_TEST(test_galaxy_body_count);
     RUN_TEST(test_galaxy_center_of_mass);
+
+    // Dead body tests
+    RUN_TEST(test_dead_body_skipping);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
