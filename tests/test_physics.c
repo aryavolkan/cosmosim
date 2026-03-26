@@ -548,6 +548,25 @@ static int test_quasar_galaxy_generation(void)
     return 1;
 }
 
+static int test_compact_removes_dead(void)
+{
+    Body bodies[5];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].mass = 1.0; bodies[0].type = BODY_STAR;
+    bodies[1].mass = 0.0; // dead
+    bodies[2].mass = 3.0; bodies[2].type = BODY_GAS;
+    bodies[3].mass = 0.0; // dead
+    bodies[4].mass = 5.0; bodies[4].type = BODY_STAR;
+
+    int new_n = quasar_compact(bodies, 5);
+    ASSERT(new_n == 3, "compact should remove 2 dead bodies");
+    ASSERT_NEAR(bodies[0].mass, 1.0, 1e-12, "body 0 mass preserved");
+    ASSERT_NEAR(bodies[1].mass, 3.0, 1e-12, "body 1 should be former body 2");
+    ASSERT_NEAR(bodies[2].mass, 5.0, 1e-12, "body 2 should be former body 4");
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -584,6 +603,7 @@ int main(void)
     RUN_TEST(test_feedback_pushes_outward);
     RUN_TEST(test_eddington_cap);
     RUN_TEST(test_jet_spawn_direction);
+    RUN_TEST(test_compact_removes_dead);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
