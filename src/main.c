@@ -11,6 +11,7 @@
 #include "integrator.h"
 #include "renderer.h"
 #include "initial_conditions.h"
+#include "quasar.h"
 
 #define DEFAULT_N       20000
 #define G               1.0
@@ -20,6 +21,10 @@
 #define SUBSTEPS        2
 #define WINDOW_WIDTH    1280
 #define WINDOW_HEIGHT   800
+#define DEFAULT_SMBH_MASS_FRAC     0.05
+#define DEFAULT_ACCRETION_RADIUS   3.0
+#define DEFAULT_JET_SPEED          20.0
+#define DEFAULT_FEEDBACK_STRENGTH  1.0
 
 static Camera camera = {0.8f, 0.6f, 80.0f, 0.0f, 0.0f, 0.0f};
 static int paused = 0;
@@ -132,39 +137,67 @@ int main(int argc, char **argv)
 {
     int n = DEFAULT_N;
     int merger = 0;
+    int quasar = 0;
+    int high_fidelity = 0;
     double dt = DT;
     double theta = THETA;
+    double smbh_mass_frac = DEFAULT_SMBH_MASS_FRAC;
+    double accretion_radius = DEFAULT_ACCRETION_RADIUS;
+    double jet_speed = DEFAULT_JET_SPEED;
+    double feedback_strength = DEFAULT_FEEDBACK_STRENGTH;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
             n = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--merger") == 0) {
             merger = 1;
+        } else if (strcmp(argv[i], "-q") == 0 || strcmp(argv[i], "--quasar") == 0) {
+            quasar = 1;
+        } else if (strcmp(argv[i], "--high-fidelity") == 0) {
+            high_fidelity = 1;
         } else if (strcmp(argv[i], "-dt") == 0 && i + 1 < argc) {
             dt = atof(argv[++i]);
         } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
             theta = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--smbh-mass") == 0 && i + 1 < argc) {
+            smbh_mass_frac = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--accretion-radius") == 0 && i + 1 < argc) {
+            accretion_radius = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--jet-speed") == 0 && i + 1 < argc) {
+            jet_speed = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--feedback-strength") == 0 && i + 1 < argc) {
+            feedback_strength = atof(argv[++i]);
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             printf("Usage: cosmosim [options]\n"
-                   "  -n <count>    Number of bodies (default %d)\n"
-                   "  -m, --merger  Galaxy merger mode\n"
-                   "  -dt <value>   Timestep (default %.4f)\n"
-                   "  -t <theta>    Barnes-Hut opening angle (default %.1f)\n"
+                   "  -n <count>              Number of bodies (default %d)\n"
+                   "  -m, --merger            Galaxy merger mode\n"
+                   "  -q, --quasar            Enable quasar physics (SMBH + accretion + jets)\n"
+                   "  --high-fidelity         Higher substeps and jet density\n"
+                   "  -dt <value>             Timestep (default %.4f)\n"
+                   "  -t <theta>              Barnes-Hut opening angle (default %.1f)\n"
+                   "  --smbh-mass <frac>      SMBH mass fraction (default %.2f)\n"
+                   "  --accretion-radius <r>  Accretion radius (default %.1f)\n"
+                   "  --jet-speed <v>         Jet particle speed (default %.1f)\n"
+                   "  --feedback-strength <s> Feedback multiplier (default %.1f)\n"
                    "\nControls:\n"
                    "  Scroll        Zoom in/out\n"
                    "  Left-drag     Orbit camera\n"
                    "  Right-drag    Pan\n"
                    "  Space         Pause/resume\n"
                    "  R             Reset camera\n"
-                   "  Q/Esc         Quit\n", DEFAULT_N, DT, THETA);
+                   "  Q/Esc         Quit\n",
+                   DEFAULT_N, DT, THETA,
+                   DEFAULT_SMBH_MASS_FRAC, DEFAULT_ACCRETION_RADIUS,
+                   DEFAULT_JET_SPEED, DEFAULT_FEEDBACK_STRENGTH);
             return 0;
         }
     }
 
     if (n < 2) n = 2;
+    int substeps = high_fidelity ? 8 : SUBSTEPS;
 
-    printf("cosmosim: %d bodies, %s mode, dt=%.4f, theta=%.2f\n",
-           n, merger ? "merger" : "galaxy", dt, theta);
+    printf("cosmosim: %d bodies, %s%s mode, dt=%.4f, theta=%.2f\n",
+           n, merger ? "merger" : "galaxy", quasar ? " quasar" : "", dt, theta);
 
     if (!glfwInit()) {
         fprintf(stderr, "Failed to initialize GLFW\n");
@@ -206,9 +239,10 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Allocate bodies and octree pool
-    Body *bodies = calloc(n, sizeof(Body));
-    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    // Allocate bodies with headroom for jet particles
+    int n_alloc = quasar ? n + n / 4 : n;
+    Body *bodies = calloc(n_alloc, sizeof(Body));
+    OctreeNode *pool = malloc(8 * n_alloc * sizeof(OctreeNode));
 
     if (!bodies || !pool) {
         fprintf(stderr, "Failed to allocate memory\n");
@@ -216,14 +250,35 @@ int main(int argc, char **argv)
     }
 
     // Generate initial conditions
-    if (merger) {
-        generate_merger(bodies, n, 60.0, 0.3);
+    if (quasar) {
+        if (merger) {
+            generate_quasar_merger(bodies, n, 60.0, 0.3, smbh_mass_frac);
+        } else {
+            generate_quasar_galaxy(bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0,
+                                   0.0, 0.0, smbh_mass_frac);
+        }
     } else {
-        generate_spiral_galaxy(bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0, 0.0, 0.0);
+        if (merger) {
+            generate_merger(bodies, n, 60.0, 0.3);
+        } else {
+            generate_spiral_galaxy(bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0, 0.0, 0.0);
+        }
     }
 
     // Compute initial accelerations
     integrator_init_accelerations(bodies, n, G, SOFTENING, theta, pool);
+
+    QuasarConfig qcfg = quasar_default_config();
+    if (quasar) {
+        qcfg.accretion_radius = accretion_radius;
+        qcfg.jet_speed = jet_speed;
+        qcfg.feedback_strength = feedback_strength;
+        qcfg.jet_cap = high_fidelity ? n / 4 : n / 10;
+        qcfg.max_bodies = n_alloc;
+    }
+    int current_n = n;
+    int compact_counter = 0;
+    int compact_interval = high_fidelity ? 60 : 120;
 
     printf("Simulation running. Press Space to pause, Q to quit, R to reset camera.\n");
 
@@ -235,14 +290,24 @@ int main(int argc, char **argv)
         glfwPollEvents();
 
         if (!paused) {
-            for (int sub = 0; sub < SUBSTEPS; sub++) {
-                integrator_step(bodies, n, dt, G, SOFTENING, theta, pool);
+            for (int sub = 0; sub < substeps; sub++) {
+                integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
+                if (quasar) {
+                    quasar_step(bodies, &current_n, n_alloc, &qcfg, dt);
+                }
+            }
+            if (quasar) {
+                compact_counter++;
+                if (compact_counter >= compact_interval) {
+                    current_n = quasar_compact(bodies, current_n);
+                    compact_counter = 0;
+                }
             }
         }
 
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
-        renderer_draw(bodies, n, &camera, w, h);
+        renderer_draw(bodies, current_n, &camera, w, h);
         glfwSwapBuffers(window);
 
         // FPS display
@@ -251,7 +316,7 @@ int main(int argc, char **argv)
         if (now - fps_time >= 1.0) {
             char title[128];
             snprintf(title, sizeof(title), "cosmosim | %d bodies | %.0f FPS%s",
-                     n, fps_frames / (now - fps_time), paused ? " [PAUSED]" : "");
+                     current_n, fps_frames / (now - fps_time), paused ? " [PAUSED]" : "");
             glfwSetWindowTitle(window, title);
             fps_frames = 0;
             fps_time = now;
