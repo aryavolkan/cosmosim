@@ -61,6 +61,29 @@ Options:
 ./build/cosmosim -t 0.3
 ```
 
+## Testing
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ./build/test_physics
+# Or via CTest:
+cd build && ctest
+```
+
+Tests cover octree construction, force computation (Newton's 3rd law, inverse-square, octree-vs-direct comparison), integrator conservation laws (energy, momentum), and initial conditions generation. No GPU/display required.
+
+## Architecture
+
+| Module | Purpose |
+|--------|---------|
+| `body.h` | `Body` struct: 3D position, velocity, acceleration, mass (all `double`) |
+| `octree.c/h` | Barnes-Hut octree with flat pool allocator (`8*n` nodes). Rebuilt from scratch each substep |
+| `integrator.c/h` | Kick-drift-kick leapfrog, 2 substeps per frame |
+| `renderer.c/h` | OpenGL point-sprite renderer, orbit camera (spherical coords), additive blending, depth test disabled |
+| `initial_conditions.c/h` | Exponential-disk spiral galaxies with xorshift64 PRNG, or two-galaxy merger |
+| `src/shaders/` | GLSL 330: mass-based coloring (blue->orange) with gaussian falloff, perspective point-size attenuation |
+
+Physics uses `double` precision; renderer converts to `float` for GPU upload. Shaders loaded from disk at runtime via `SHADER_DIR` compile define (set by CMake to `src/shaders/`).
+
 ## How It Works
 
 Each frame the simulation:
