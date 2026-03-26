@@ -451,6 +451,80 @@ static int test_accretion_mass_conservation(void)
     return 1;
 }
 
+static int test_feedback_pushes_outward(void)
+{
+    Body bodies[2];
+    memset(bodies, 0, sizeof(bodies));
+
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].accretion_rate = 50.0;  // pre-seed so luminosity will be nonzero
+    bodies[0].spin_z = 1.0;
+
+    bodies[1].x = 5.0;
+    bodies[1].mass = 1.0;
+    bodies[1].type = BODY_STAR;
+
+    QuasarConfig cfg = quasar_default_config();
+    int n = 2;
+    quasar_step(bodies, &n, 2, &cfg, 0.005);
+
+    // After step, SMBH luminosity = eta_eff * accretion_rate (smoothed)
+    // Feedback acceleration on body 1 should be in +x direction
+    ASSERT(bodies[1].ax > 0, "feedback should push body outward (+x)");
+    ASSERT_NEAR(bodies[1].ay, 0.0, 1e-12, "feedback should be purely radial (ay=0)");
+    ASSERT_NEAR(bodies[1].az, 0.0, 1e-12, "feedback should be purely radial (az=0)");
+
+    return 1;
+}
+
+static int test_eddington_cap(void)
+{
+    Body bodies[1];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].accretion_rate = 10000.0;  // very high
+    bodies[0].spin_z = 1.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    int n = 1;
+    quasar_step(bodies, &n, 1, &cfg, 0.005);
+
+    double l_edd = cfg.eddington_k * bodies[0].mass;
+    ASSERT(bodies[0].luminosity <= l_edd + 1e-10,
+           "luminosity should not exceed Eddington limit");
+
+    return 1;
+}
+
+static int test_jet_spawn_direction(void)
+{
+    Body bodies[10];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].accretion_rate = 50.0;
+    bodies[0].spin_x = 0; bodies[0].spin_y = 0; bodies[0].spin_z = 1.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    cfg.jet_cap = 10;
+    int n = 1;
+    quasar_step(bodies, &n, 10, &cfg, 0.005);
+
+    // Should have spawned at least one jet particle
+    ASSERT(n > 1, "jets should have been spawned");
+
+    // Jet velocity should be primarily along spin axis (+/- z)
+    for (int i = 1; i < n; i++) {
+        ASSERT(bodies[i].type == BODY_JET, "spawned body should be JET type");
+        ASSERT(fabs(bodies[i].vz) > fabs(bodies[i].vx), "jet vz should dominate vx");
+        ASSERT(fabs(bodies[i].vz) > fabs(bodies[i].vy), "jet vz should dominate vy");
+    }
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -481,6 +555,9 @@ int main(void)
 
     // Quasar physics tests
     RUN_TEST(test_accretion_mass_conservation);
+    RUN_TEST(test_feedback_pushes_outward);
+    RUN_TEST(test_eddington_cap);
+    RUN_TEST(test_jet_spawn_direction);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
