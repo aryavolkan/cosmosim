@@ -6,6 +6,7 @@
 #include "octree.h"
 #include "integrator.h"
 #include "initial_conditions.h"
+#include "quasar.h"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -417,6 +418,39 @@ static int test_dead_body_skipping(void)
     return 1;
 }
 
+/* ---- quasar tests ---- */
+
+static int test_accretion_mass_conservation(void)
+{
+    // SMBH at origin, small body very close (inside r_swallow)
+    Body bodies[2];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].mass = 100.0;
+    bodies[0].type = BODY_SMBH;
+    bodies[0].spin_x = 0; bodies[0].spin_y = 0; bodies[0].spin_z = 1.0;
+
+    bodies[1].x = 0.05;  // inside default r_swallow=0.3
+    bodies[1].mass = 2.0;
+    bodies[1].vx = 0.1;
+    bodies[1].type = BODY_STAR;
+
+    double total_mass_before = bodies[0].mass + bodies[1].mass;
+    double total_px_before = bodies[0].mass * bodies[0].vx + bodies[1].mass * bodies[1].vx;
+
+    QuasarConfig cfg = quasar_default_config();
+    int n = 2;
+    quasar_step(bodies, &n, 2, &cfg, 0.005);
+
+    double total_mass_after = bodies[0].mass + bodies[1].mass;
+    double total_px_after = bodies[0].mass * bodies[0].vx + bodies[1].mass * bodies[1].vx;
+
+    ASSERT_NEAR(total_mass_after, total_mass_before, 1e-10, "mass should be conserved on accretion");
+    ASSERT_NEAR(total_px_after, total_px_before, 1e-10, "px should be conserved on accretion");
+    ASSERT_NEAR(bodies[1].mass, 0.0, 1e-12, "swallowed body should be dead");
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -444,6 +478,9 @@ int main(void)
 
     // Dead body tests
     RUN_TEST(test_dead_body_skipping);
+
+    // Quasar physics tests
+    RUN_TEST(test_accretion_mass_conservation);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
