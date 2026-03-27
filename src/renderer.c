@@ -285,7 +285,8 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
     // Ensure upload buffer (8 floats per body)
     if (n * 8 > upload_buf_capacity) {
         upload_buf_capacity = n * 8;
-        upload_buf = realloc(upload_buf, upload_buf_capacity * sizeof(float));
+        float *tmp = realloc(upload_buf, upload_buf_capacity * sizeof(float));
+        if (tmp) upload_buf = tmp;
     }
 
     // Upload: x, y, z, mass, vx, vy, vz, type (skip dead bodies)
