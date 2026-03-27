@@ -466,7 +466,7 @@ void renderer_draw(const Body *bodies,
 
         for (int s = 0; s < num_smbh; s++) {
             float sx = rcfg->smbhs[s].x, sy = rcfg->smbhs[s].y, sz = rcfg->smbhs[s].z;
-            float smv[4] = {view[0] * sx + view[4] * sy + view[8] * sz + view[12],
+            const float smv[4] = {view[0] * sx + view[4] * sy + view[8] * sz + view[12],
                             view[1] * sx + view[5] * sy + view[9] * sz + view[13],
                             view[2] * sx + view[6] * sy + view[10] * sz + view[14],
                             view[3] * sx + view[7] * sy + view[11] * sz + view[15]};
