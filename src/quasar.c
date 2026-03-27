@@ -52,6 +52,7 @@ QuasarConfig quasar_default_config(void)
     cfg.jet_cap = 2000;
     cfg.jet_count = 0;
     cfg.max_bodies = 0;
+    cfg.jet_ring_count = 4;
     return cfg;
 }
 
@@ -303,28 +304,59 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
             double angle  = qrng_uniform() * 2.0 * M_PI;
             double offset = qrng_gaussian() * this_cone;
 
-            Body *jet = &bodies[*n];
-            memset(jet, 0, sizeof(Body));
-            jet->type     = BODY_JET;
-            jet->mass     = this_mass;
-            jet->lifetime = this_life;
+            /* Spawn a ring of particles for limb brightening.
+               Edge particles get lower mass (fainter) but the ring geometry
+               creates a bright-edge, dim-center morphology when rendered
+               with additive blending. */
+            int ring_n = cfg->jet_ring_count;
+            if (is_burst) ring_n = 1; /* bursts are single bright knots */
 
-            jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd)
-                     + offset * (perp_x * cos(angle))
-                     + sign * hx;
-            jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd)
-                     + offset * (perp_y * cos(angle))
-                     + sign * hy;
-            jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd)
-                     + offset * (perp_z * sin(angle))
-                     + sign * hz;
+            for (int r = 0; r < ring_n; r++) {
+                if (*n >= n_alloc || cfg->jet_count >= cfg->jet_cap) break;
 
-            jet->vx = smbh->vx + sign * smbh->spin_x * this_speed;
-            jet->vy = smbh->vy + sign * smbh->spin_y * this_speed;
-            jet->vz = smbh->vz + sign * smbh->spin_z * this_speed;
+                Body *jet = &bodies[*n];
+                memset(jet, 0, sizeof(Body));
+                jet->type     = BODY_JET;
+                jet->lifetime = this_life;
 
-            (*n)++;
-            cfg->jet_count++;
+                double ring_angle = (ring_n > 1)
+                    ? 2.0 * M_PI * r / ring_n + angle
+                    : angle;
+                double ring_r = (ring_n > 1)
+                    ? cfg->swallow_radius * 0.15
+                    : 0.0;
+
+                /* Ring offset perpendicular to jet axis */
+                double rx = ring_r * (cos(ring_angle) * perp_x + sin(ring_angle) * perp2_x);
+                double ry = ring_r * (cos(ring_angle) * perp_y + sin(ring_angle) * perp2_y);
+                double rz = ring_r * (cos(ring_angle) * perp_z + sin(ring_angle) * perp2_z);
+
+                /* Edge particles get slightly less mass (limb effect comes from
+                   additive blending of the ring overlapping at edges in projection) */
+                jet->mass = (ring_n > 1) ? this_mass * 0.6 : this_mass;
+
+                jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd)
+                         + offset * (perp_x * cos(angle))
+                         + sign * hx + rx;
+                jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd)
+                         + offset * (perp_y * cos(angle))
+                         + sign * hy + ry;
+                jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd)
+                         + offset * (perp_z * sin(angle))
+                         + sign * hz + rz;
+
+                /* Slight outward velocity for progressive opening angle */
+                double expand_v = this_speed * 0.04 * (1.0 + jet->lifetime * 0.1);
+                jet->vx = smbh->vx + sign * smbh->spin_x * this_speed
+                          + rx * expand_v / (ring_r + 1e-15);
+                jet->vy = smbh->vy + sign * smbh->spin_y * this_speed
+                          + ry * expand_v / (ring_r + 1e-15);
+                jet->vz = smbh->vz + sign * smbh->spin_z * this_speed
+                          + rz * expand_v / (ring_r + 1e-15);
+
+                (*n)++;
+                cfg->jet_count++;
+            }
         }
     }
 }
