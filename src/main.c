@@ -220,6 +220,8 @@ int main(int argc, char **argv)
     int render_frames = DEFAULT_RENDER_FRAMES;
     int render_substeps = DEFAULT_RENDER_SUBSTEPS;
     float orbit_speed = DEFAULT_RENDER_ORBIT_SPEED;
+    float cam_azimuth = 0.8f;
+    float cam_elevation = 0.4f;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
@@ -255,6 +257,10 @@ int main(int argc, char **argv)
             render_substeps = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--orbit-speed") == 0 && i + 1 < argc) {
             orbit_speed = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--cam-azimuth") == 0 && i + 1 < argc) {
+            cam_azimuth = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--cam-elevation") == 0 && i + 1 < argc) {
+            cam_elevation = (float)atof(argv[++i]);
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             printf("Usage: cosmosim [options]\n"
                    "  -n <count>              Number of bodies (default %d)\n"
@@ -425,7 +431,7 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        Camera render_cam = {0.8f, 0.4f, 20.0f, 0.0f, 0.0f, 0.0f};
+        Camera render_cam = {cam_azimuth, cam_elevation, 20.0f, 0.0f, 0.0f, 0.0f};
 
         // Initialize camera target to midpoint of all SMBHs
         if (quasar) {
