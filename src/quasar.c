@@ -272,6 +272,58 @@ static void decay_jets(Body *bodies, int n, QuasarConfig *cfg, double dt)
     }
 }
 
+static void recycle_distant_jets(Body *bodies, int n, QuasarConfig *cfg)
+{
+    // Find first SMBH
+    int smbh_idx = -1;
+    for (int i = 0; i < n; i++) {
+        if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+            smbh_idx = i;
+            break;
+        }
+    }
+    if (smbh_idx < 0) return;
+
+    const Body *smbh = &bodies[smbh_idx];
+    double recycle_r = cfg->accretion_radius * 10.0;
+    double recycle_r_sq = recycle_r * recycle_r;
+
+    for (int i = 0; i < n; i++) {
+        if (bodies[i].type != BODY_JET || bodies[i].mass <= 0.0) continue;
+
+        double dx = bodies[i].x - smbh->x;
+        double dy = bodies[i].y - smbh->y;
+        double dz = bodies[i].z - smbh->z;
+        double dist_sq = dx * dx + dy * dy + dz * dz;
+
+        if (dist_sq < recycle_r_sq) continue;
+
+        // Recycle: place at accretion boundary with inward velocity
+        double angle = 2.0 * M_PI * qrng_uniform();
+        double cos_phi = 2.0 * qrng_uniform() - 1.0;
+        double sin_phi = sqrt(1.0 - cos_phi * cos_phi);
+        double r_place = cfg->accretion_radius;
+
+        bodies[i].x = smbh->x + r_place * sin_phi * cos(angle);
+        bodies[i].y = smbh->y + r_place * sin_phi * sin(angle);
+        bodies[i].z = smbh->z + r_place * cos_phi;
+
+        // Inward radial velocity at half circular speed
+        double v_inward = 0.5 * sqrt(smbh->mass / r_place);
+        double nx = (bodies[i].x - smbh->x) / r_place;
+        double ny = (bodies[i].y - smbh->y) / r_place;
+        double nz = (bodies[i].z - smbh->z) / r_place;
+        bodies[i].vx = smbh->vx - v_inward * nx;
+        bodies[i].vy = smbh->vy - v_inward * ny;
+        bodies[i].vz = smbh->vz - v_inward * nz;
+
+        bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].lifetime = 0.0;
+        cfg->jet_count--;
+    }
+}
+
 void quasar_step(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt)
 {
     // 1. Process accretion
@@ -297,6 +349,9 @@ void quasar_step(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt
 
     // 4. Decay expired jet particles
     decay_jets(bodies, *n, cfg, dt);
+
+    // 4b. Recycle distant jet particles as infalling gas
+    recycle_distant_jets(bodies, *n, cfg);
 
     // 5. Spawn new jet particles
     spawn_jets(bodies, n, n_alloc, cfg);
