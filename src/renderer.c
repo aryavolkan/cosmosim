@@ -388,7 +388,7 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
         }
 
         // Compute SMBH screen position for lensing
-        float mv[4] = {
+        const float mv[4] = {
             view[0]*rcfg->smbh_x + view[4]*rcfg->smbh_y + view[8]*rcfg->smbh_z + view[12],
             view[1]*rcfg->smbh_x + view[5]*rcfg->smbh_y + view[9]*rcfg->smbh_z + view[13],
             view[2]*rcfg->smbh_x + view[6]*rcfg->smbh_y + view[10]*rcfg->smbh_z + view[14],

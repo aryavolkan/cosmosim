@@ -97,7 +97,7 @@ static void accrete_body(Body *smbh, Body *victim)
     victim->ax = victim->ay = victim->az = 0.0;
 }
 
-static void apply_disk_drag(Body *smbh, Body *gas, double alpha)
+static void apply_disk_drag(const Body *smbh, Body *gas, double alpha)
 {
     double rx = gas->x - smbh->x;
     double ry = gas->y - smbh->y;
@@ -119,7 +119,7 @@ static void apply_disk_drag(Body *smbh, Body *gas, double alpha)
     gas->az -= alpha * vr_z;
 }
 
-static void process_accretion(Body *bodies, int n, QuasarConfig *cfg, double dt,
+static void process_accretion(Body *bodies, int n, const QuasarConfig *cfg, double dt,
                               double *mass_swallowed)
 {
     (void)dt;
@@ -179,7 +179,7 @@ static void apply_feedback(Body *bodies, int n, const QuasarConfig *cfg)
 
     for (int s = 0; s < n; s++) {
         if (bodies[s].type != BODY_SMBH || bodies[s].luminosity <= 0.0) continue;
-        Body *smbh = &bodies[s];
+        const Body *smbh = &bodies[s];
 
         for (int i = 0; i < n; i++) {
             if (i == s || bodies[i].mass <= 0.0 || bodies[i].type == BODY_SMBH) continue;
@@ -205,7 +205,7 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
 {
     for (int s = 0; s < *n; s++) {
         if (bodies[s].type != BODY_SMBH || bodies[s].luminosity <= 0.0) continue;
-        Body *smbh = &bodies[s];
+        const Body *smbh = &bodies[s];
 
         double jet_energy = 0.5 * cfg->jet_mass * cfg->jet_speed * cfg->jet_speed;
         if (jet_energy < 1e-15) continue;

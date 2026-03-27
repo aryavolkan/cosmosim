@@ -43,8 +43,6 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
 
     double scale_radius = disk_radius / 4.0;
     double scale_height = disk_radius * 0.02; // thin disk vertical extent
-    double total_mass = 0.0;
-
     // Central massive body
     bodies[0].x = cx;
     bodies[0].y = cy;
@@ -56,7 +54,6 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
     bodies[0].ay = 0.0;
     bodies[0].az = 0.0;
     bodies[0].mass = galaxy_mass * 0.01;
-    total_mass += bodies[0].mass;
 
     // Disk bodies
     for (int i = 1; i < n; i++) {
@@ -76,8 +73,6 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
         } else {
             bodies[i].mass = 1.0;
         }
-        total_mass += bodies[i].mass;
-
         // Circular orbital velocity: v = sqrt(G * M_enclosed / r)
         // M_enclosed approximation for exponential disk
         double m_enclosed = galaxy_mass * (1.0 - exp(-r / scale_radius) * (1.0 + r / scale_radius));
