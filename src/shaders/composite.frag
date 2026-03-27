@@ -7,6 +7,7 @@ uniform float u_bloom_intensity;
 uniform vec2 u_smbh_screen;
 uniform float u_smbh_mass;
 uniform float u_lensing_strength;
+uniform float u_exposure;
 
 out vec4 frag_color;
 
@@ -31,8 +32,9 @@ void main()
     // Combine scene + bloom
     vec3 combined = hdr_color + bloom_color * u_bloom_intensity;
 
-    // Reinhard tonemap
-    vec3 ldr = combined / (vec3(1.0) + combined);
+    // Exposure-compensated Reinhard tonemap
+    vec3 exposed = combined * u_exposure;
+    vec3 ldr = exposed / (vec3(1.0) + exposed);
 
     // Gamma correction
     ldr = pow(ldr, vec3(1.0 / 2.2));

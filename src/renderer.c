@@ -305,6 +305,33 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
         count++;
     }
 
+    // Compute CPU-side exposure estimate
+    if (rcfg) {
+        float cam_x = cam->target_x + cam->distance * cosf(cam->elevation) * cosf(cam->azimuth);
+        float cam_y = cam->target_y + cam->distance * cosf(cam->elevation) * sinf(cam->azimuth);
+        float cam_z = cam->target_z + cam->distance * sinf(cam->elevation);
+
+        float total_lum = 0.0f;
+        for (int i = 0; i < count; i++) {
+            int off = i * 8;
+            float dx = upload_buf[off + 0] - cam_x;
+            float dy = upload_buf[off + 1] - cam_y;
+            float dz = upload_buf[off + 2] - cam_z;
+            float dist_sq = dx * dx + dy * dy + dz * dz + 1.0f;
+            float mass = upload_buf[off + 3];
+            total_lum += mass / dist_sq;
+        }
+        float avg_lum = count > 0 ? total_lum / (float)count : 0.001f;
+        if (avg_lum < 0.001f) avg_lum = 0.001f;
+
+        float target_exposure = 0.18f / avg_lum;
+        if (target_exposure < 0.5f) target_exposure = 0.5f;
+        if (target_exposure > 20.0f) target_exposure = 20.0f;
+
+        // Cast away const for exposure update (exposure is mutable render state)
+        ((RendererConfig *)rcfg)->exposure = 0.9f * rcfg->exposure + 0.1f * target_exposure;
+    }
+
     // HDR FBO setup
     if (hdr_active && rcfg) {
         if (window_width != hdr_width || window_height != hdr_height) {
@@ -416,6 +443,8 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
         glBindTexture(GL_TEXTURE_2D, bloom_tex[0]);
         glUniform1i(glGetUniformLocation(composite_program, "u_bloom"), 1);
         glUniform1f(glGetUniformLocation(composite_program, "u_bloom_intensity"), 0.5f);
+        glUniform1f(glGetUniformLocation(composite_program, "u_exposure"),
+                    rcfg->exposure);
         glUniform2f(glGetUniformLocation(composite_program, "u_smbh_screen"),
                     smbh_ndc_x, smbh_ndc_y);
         glUniform1f(glGetUniformLocation(composite_program, "u_smbh_mass"),

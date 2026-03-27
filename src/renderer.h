@@ -17,6 +17,7 @@ typedef struct {
     float smbh_mass;
     int bloom_iterations;
     int lensing_samples;
+    float exposure;
 } RendererConfig;
 
 int renderer_init(const RendererConfig *rcfg);
