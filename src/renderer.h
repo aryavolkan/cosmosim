@@ -20,7 +20,7 @@ typedef struct {
 
 typedef struct {
     int hdr_enabled;
-    float smbh_x, smbh_y, smbh_z;       // primary SMBH (backwards compat)
+    float smbh_x, smbh_y, smbh_z; // primary SMBH (backwards compat)
     float smbh_luminosity;
     float smbh_mass;
     SMBHInfo smbhs[MAX_SMBH];
@@ -32,8 +32,11 @@ typedef struct {
 
 int renderer_init(const RendererConfig *rcfg);
 void renderer_update_smbh(RendererConfig *rcfg, const Body *bodies, int n);
-void renderer_draw(const Body *bodies, int n, const Camera *cam,
-                   int window_width, int window_height,
+void renderer_draw(const Body *bodies,
+                   int n,
+                   const Camera *cam,
+                   int window_width,
+                   int window_height,
                    const RendererConfig *rcfg);
 void renderer_cleanup(void);
 

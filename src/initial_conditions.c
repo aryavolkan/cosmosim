@@ -31,13 +31,19 @@ static double rng_gaussian(void)
 {
     double u1 = rng_uniform();
     double u2 = rng_uniform();
-    if (u1 < 1e-15) u1 = 1e-15;
+    if (u1 < 1e-15)
+        u1 = 1e-15;
     return sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
 }
 
-void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
-                            double galaxy_mass, double disk_radius,
-                            double vx_bulk, double vy_bulk)
+void generate_spiral_galaxy(Body *bodies,
+                            int n,
+                            double cx,
+                            double cy,
+                            double galaxy_mass,
+                            double disk_radius,
+                            double vx_bulk,
+                            double vy_bulk)
 {
     rng_seed((uint64_t)time(NULL));
 
@@ -59,7 +65,8 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
     for (int i = 1; i < n; i++) {
         // Exponential radial distribution
         double u = rng_uniform();
-        if (u < 1e-15) u = 1e-15;
+        if (u < 1e-15)
+            u = 1e-15;
         double r = -scale_radius * log(1.0 - u * (1.0 - exp(-disk_radius / scale_radius)));
         double theta = 2.0 * M_PI * rng_uniform();
 
@@ -78,7 +85,8 @@ void generate_spiral_galaxy(Body *bodies, int n, double cx, double cy,
         double m_enclosed = galaxy_mass * (1.0 - exp(-r / scale_radius) * (1.0 + r / scale_radius));
         // Add central mass contribution
         m_enclosed += bodies[0].mass;
-        if (r < 1e-10) r = 1e-10;
+        if (r < 1e-10)
+            r = 1e-10;
         double v_circ = sqrt(m_enclosed / r); // G=1 in sim units
 
         // Tangential velocity + dispersion
@@ -104,23 +112,36 @@ void generate_merger(Body *bodies, int n, double separation, double approach_vel
     double galaxy_mass = (double)n1 * 2.0;
 
     // Galaxy 1: left, moving right and slightly up
-    generate_spiral_galaxy(bodies, n1,
-                           -separation * 0.5, 0.0,
-                           galaxy_mass, disk_radius,
-                           approach_vel, approach_vel * 0.3);
+    generate_spiral_galaxy(bodies,
+                           n1,
+                           -separation * 0.5,
+                           0.0,
+                           galaxy_mass,
+                           disk_radius,
+                           approach_vel,
+                           approach_vel * 0.3);
 
     // Galaxy 2: right, moving left and slightly down
     // Re-seed for different structure
     rng_seed((uint64_t)time(NULL) + 12345);
-    generate_spiral_galaxy(bodies + n1, n2,
-                           separation * 0.5, 0.0,
-                           galaxy_mass * 0.7, disk_radius * 0.8,
-                           -approach_vel, -approach_vel * 0.3);
+    generate_spiral_galaxy(bodies + n1,
+                           n2,
+                           separation * 0.5,
+                           0.0,
+                           galaxy_mass * 0.7,
+                           disk_radius * 0.8,
+                           -approach_vel,
+                           -approach_vel * 0.3);
 }
 
-void generate_quasar_galaxy(Body *bodies, int n, double cx, double cy,
-                            double galaxy_mass, double disk_radius,
-                            double vx_bulk, double vy_bulk,
+void generate_quasar_galaxy(Body *bodies,
+                            int n,
+                            double cx,
+                            double cy,
+                            double galaxy_mass,
+                            double disk_radius,
+                            double vx_bulk,
+                            double vy_bulk,
                             double smbh_mass_frac)
 {
     // Generate base galaxy
@@ -148,8 +169,8 @@ void generate_quasar_galaxy(Body *bodies, int n, double cx, double cy,
     }
 }
 
-void generate_quasar_merger(Body *bodies, int n, double separation,
-                            double approach_vel, double smbh_mass_frac)
+void generate_quasar_merger(
+    Body *bodies, int n, double separation, double approach_vel, double smbh_mass_frac)
 {
     int n1 = n / 2;
     int n2 = n - n1;
@@ -168,24 +189,25 @@ void generate_quasar_merger(Body *bodies, int n, double separation,
 
     // Galaxy 1: left, moving up (tangential)
     // Small radial component for slight infall, large tangential for orbit
-    double vx1 = approach_vel;           // mild radial approach
-    double vy1 = v_orbit;               // strong tangential motion
+    double vx1 = approach_vel; // mild radial approach
+    double vy1 = v_orbit;      // strong tangential motion
 
     // Galaxy 2: right, moving down (opposite tangential)
     double vx2 = -approach_vel;
-    double vy2 = -v_orbit * 0.7;        // slightly less (mass ratio asymmetry)
+    double vy2 = -v_orbit * 0.7; // slightly less (mass ratio asymmetry)
 
-    generate_quasar_galaxy(bodies, n1,
-                           -separation * 0.5, 0.0,
-                           galaxy_mass, disk_radius,
-                           vx1, vy1,
-                           smbh_mass_frac);
+    generate_quasar_galaxy(
+        bodies, n1, -separation * 0.5, 0.0, galaxy_mass, disk_radius, vx1, vy1, smbh_mass_frac);
 
     // Galaxy 2: re-seed RNG for different structure
     rng_seed((uint64_t)time(NULL) + 12345);
-    generate_quasar_galaxy(bodies + n1, n2,
-                           separation * 0.5, 0.0,
-                           galaxy_mass * 0.7, disk_radius * 0.8,
-                           vx2, vy2,
+    generate_quasar_galaxy(bodies + n1,
+                           n2,
+                           separation * 0.5,
+                           0.0,
+                           galaxy_mass * 0.7,
+                           disk_radius * 0.8,
+                           vx2,
+                           vy2,
                            smbh_mass_frac);
 }
