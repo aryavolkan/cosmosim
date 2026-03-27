@@ -6,6 +6,7 @@
 #include "octree.h"
 #include "integrator.h"
 #include "initial_conditions.h"
+#include "quasar.h"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -75,6 +76,7 @@ static Body make_body(double x, double y, double z,
     b.x = x; b.y = y; b.z = z;
     b.vx = vx; b.vy = vy; b.vz = vz;
     b.mass = mass;
+    b.type = BODY_STAR;
     return b;
 }
 
@@ -387,6 +389,184 @@ static int test_galaxy_center_of_mass(void)
     return 1;
 }
 
+/* ---- dead body tests ---- */
+
+static int test_dead_body_skipping(void)
+{
+    Body bodies[3];
+    bodies[0] = make_body(0, 0, 0, 0, 0, 0, 10.0);
+    bodies[1] = make_body(5.0, 0, 0, 0, 0, 0, 0.0);  // dead
+    bodies[2] = make_body(-5.0, 0, 0, 0, 0, 0, 3.0);
+
+    OctreeNode *pool = malloc(24 * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, 3);
+
+    // Root mass should exclude dead body
+    ASSERT_NEAR(pool[0].total_mass, 13.0, 1e-12, "dead body should not contribute mass");
+
+    // Force on body 0 should only come from body 2
+    octree_compute_forces(pool, 0, bodies, 3, 1.0, 0.01, 0.0);
+    ASSERT(bodies[0].ax < 0, "body 0 should be pulled toward body 2 (-x)");
+
+    // Dead body should have zero acceleration
+    ASSERT_NEAR(bodies[1].ax, 0.0, 1e-12, "dead body should have zero ax");
+    ASSERT_NEAR(bodies[1].ay, 0.0, 1e-12, "dead body should have zero ay");
+    ASSERT_NEAR(bodies[1].az, 0.0, 1e-12, "dead body should have zero az");
+
+    free(pool);
+    return 1;
+}
+
+/* ---- quasar tests ---- */
+
+static int test_accretion_mass_conservation(void)
+{
+    // SMBH at origin, small body very close (inside r_swallow)
+    Body bodies[2];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].mass = 100.0;
+    bodies[0].type = BODY_SMBH;
+    bodies[0].spin_x = 0; bodies[0].spin_y = 0; bodies[0].spin_z = 1.0;
+
+    bodies[1].x = 0.05;  // inside default r_swallow=0.3
+    bodies[1].mass = 2.0;
+    bodies[1].vx = 0.1;
+    bodies[1].type = BODY_STAR;
+
+    double total_mass_before = bodies[0].mass + bodies[1].mass;
+    double total_px_before = bodies[0].mass * bodies[0].vx + bodies[1].mass * bodies[1].vx;
+
+    QuasarConfig cfg = quasar_default_config();
+    int n = 2;
+    quasar_step(bodies, &n, 2, &cfg, 0.005);
+
+    double total_mass_after = bodies[0].mass + bodies[1].mass;
+    double total_px_after = bodies[0].mass * bodies[0].vx + bodies[1].mass * bodies[1].vx;
+
+    ASSERT_NEAR(total_mass_after, total_mass_before, 1e-10, "mass should be conserved on accretion");
+    ASSERT_NEAR(total_px_after, total_px_before, 1e-10, "px should be conserved on accretion");
+    ASSERT_NEAR(bodies[1].mass, 0.0, 1e-12, "swallowed body should be dead");
+
+    return 1;
+}
+
+static int test_feedback_pushes_outward(void)
+{
+    Body bodies[2];
+    memset(bodies, 0, sizeof(bodies));
+
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].accretion_rate = 50.0;  // pre-seed so luminosity will be nonzero
+    bodies[0].spin_z = 1.0;
+
+    bodies[1].x = 5.0;
+    bodies[1].mass = 1.0;
+    bodies[1].type = BODY_STAR;
+
+    QuasarConfig cfg = quasar_default_config();
+    int n = 2;
+    quasar_step(bodies, &n, 2, &cfg, 0.005);
+
+    // After step, SMBH luminosity = eta_eff * accretion_rate (smoothed)
+    // Feedback acceleration on body 1 should be in +x direction
+    ASSERT(bodies[1].ax > 0, "feedback should push body outward (+x)");
+    ASSERT_NEAR(bodies[1].ay, 0.0, 1e-12, "feedback should be purely radial (ay=0)");
+    ASSERT_NEAR(bodies[1].az, 0.0, 1e-12, "feedback should be purely radial (az=0)");
+
+    return 1;
+}
+
+static int test_eddington_cap(void)
+{
+    Body bodies[1];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].accretion_rate = 10000.0;  // very high
+    bodies[0].spin_z = 1.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    int n = 1;
+    quasar_step(bodies, &n, 1, &cfg, 0.005);
+
+    double l_edd = cfg.eddington_k * bodies[0].mass;
+    ASSERT(bodies[0].luminosity <= l_edd + 1e-10,
+           "luminosity should not exceed Eddington limit");
+
+    return 1;
+}
+
+static int test_jet_spawn_direction(void)
+{
+    Body bodies[10];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].accretion_rate = 50.0;
+    bodies[0].spin_x = 0; bodies[0].spin_y = 0; bodies[0].spin_z = 1.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    cfg.jet_cap = 10;
+    int n = 1;
+    quasar_step(bodies, &n, 10, &cfg, 0.005);
+
+    // Should have spawned at least one jet particle
+    ASSERT(n > 1, "jets should have been spawned");
+
+    // Jet velocity should be primarily along spin axis (+/- z)
+    for (int i = 1; i < n; i++) {
+        ASSERT(bodies[i].type == BODY_JET, "spawned body should be JET type");
+        ASSERT(fabs(bodies[i].vz) > fabs(bodies[i].vx), "jet vz should dominate vx");
+        ASSERT(fabs(bodies[i].vz) > fabs(bodies[i].vy), "jet vz should dominate vy");
+    }
+
+    return 1;
+}
+
+static int test_quasar_galaxy_generation(void)
+{
+    int n = 500;
+    Body *bodies = calloc(n, sizeof(Body));
+    generate_quasar_galaxy(bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0, 0.0, 0.0, 0.05);
+
+    // Body 0 should be SMBH
+    ASSERT(bodies[0].type == BODY_SMBH, "first body should be SMBH");
+    ASSERT_NEAR(bodies[0].spin_z, 1.0, 1e-12, "SMBH spin should be +z");
+    ASSERT(bodies[0].mass > 0, "SMBH should have positive mass");
+
+    // Should have some GAS bodies in inner region
+    int gas_count = 0;
+    for (int i = 1; i < n; i++) {
+        if (bodies[i].type == BODY_GAS) gas_count++;
+        ASSERT(bodies[i].mass > 0, "all bodies should have positive mass");
+    }
+    ASSERT(gas_count > 0, "should have pre-seeded gas bodies");
+
+    free(bodies);
+    return 1;
+}
+
+static int test_compact_removes_dead(void)
+{
+    Body bodies[5];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].mass = 1.0; bodies[0].type = BODY_STAR;
+    bodies[1].mass = 0.0; // dead
+    bodies[2].mass = 3.0; bodies[2].type = BODY_GAS;
+    bodies[3].mass = 0.0; // dead
+    bodies[4].mass = 5.0; bodies[4].type = BODY_STAR;
+
+    int new_n = quasar_compact(bodies, 5);
+    ASSERT(new_n == 3, "compact should remove 2 dead bodies");
+    ASSERT_NEAR(bodies[0].mass, 1.0, 1e-12, "body 0 mass preserved");
+    ASSERT_NEAR(bodies[1].mass, 3.0, 1e-12, "body 1 should be former body 2");
+    ASSERT_NEAR(bodies[2].mass, 5.0, 1e-12, "body 2 should be former body 4");
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -411,6 +591,19 @@ int main(void)
     // Initial conditions tests
     RUN_TEST(test_galaxy_body_count);
     RUN_TEST(test_galaxy_center_of_mass);
+
+    // Dead body tests
+    RUN_TEST(test_dead_body_skipping);
+
+    // Quasar initial conditions tests
+    RUN_TEST(test_quasar_galaxy_generation);
+
+    // Quasar physics tests
+    RUN_TEST(test_accretion_mass_conservation);
+    RUN_TEST(test_feedback_pushes_outward);
+    RUN_TEST(test_eddington_cap);
+    RUN_TEST(test_jet_spawn_direction);
+    RUN_TEST(test_compact_removes_dead);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

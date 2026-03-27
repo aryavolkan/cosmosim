@@ -105,17 +105,25 @@ void octree_build(OctreeNode *pool, int *pool_size, const Body *bodies, int n)
 {
     *pool_size = 0;
 
-    // Compute bounding box
+    // Compute bounding box (skip dead bodies)
     double min_x = DBL_MAX, max_x = -DBL_MAX;
     double min_y = DBL_MAX, max_y = -DBL_MAX;
     double min_z = DBL_MAX, max_z = -DBL_MAX;
+    int alive_count = 0;
     for (int i = 0; i < n; i++) {
+        if (bodies[i].mass <= 0.0) continue;
+        alive_count++;
         if (bodies[i].x < min_x) min_x = bodies[i].x;
         if (bodies[i].x > max_x) max_x = bodies[i].x;
         if (bodies[i].y < min_y) min_y = bodies[i].y;
         if (bodies[i].y > max_y) max_y = bodies[i].y;
         if (bodies[i].z < min_z) min_z = bodies[i].z;
         if (bodies[i].z > max_z) max_z = bodies[i].z;
+    }
+
+    if (alive_count == 0) {
+        alloc_node(pool, pool_size, 0, 0, 0, 1.0);
+        return;
     }
 
     double cx = (min_x + max_x) * 0.5;
@@ -134,6 +142,7 @@ void octree_build(OctreeNode *pool, int *pool_size, const Body *bodies, int n)
     (void)root; // always 0
 
     for (int i = 0; i < n; i++) {
+        if (bodies[i].mass <= 0.0) continue;
         insert(pool, pool_size, 0, bodies, i, 0);
     }
 }
@@ -192,6 +201,7 @@ void octree_compute_forces(const OctreeNode *pool, int root, Body *bodies, int n
         bodies[i].ax = 0.0;
         bodies[i].ay = 0.0;
         bodies[i].az = 0.0;
+        if (bodies[i].mass <= 0.0) continue;
         compute_force_on_body(pool, root, &bodies[i], i, G, softening_sq, theta);
     }
 }

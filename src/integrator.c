@@ -13,6 +13,7 @@ void integrator_step(Body *bodies, int n, double dt, double G,
 {
     // Kick (half step) + Drift (full step)
     for (int i = 0; i < n; i++) {
+        if (bodies[i].mass <= 0.0) continue;
         bodies[i].vx += 0.5 * bodies[i].ax * dt;
         bodies[i].vy += 0.5 * bodies[i].ay * dt;
         bodies[i].vz += 0.5 * bodies[i].az * dt;
@@ -28,6 +29,7 @@ void integrator_step(Body *bodies, int n, double dt, double G,
 
     // Kick (half step)
     for (int i = 0; i < n; i++) {
+        if (bodies[i].mass <= 0.0) continue;
         bodies[i].vx += 0.5 * bodies[i].ax * dt;
         bodies[i].vy += 0.5 * bodies[i].ay * dt;
         bodies[i].vz += 0.5 * bodies[i].az * dt;
