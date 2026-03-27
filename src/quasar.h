@@ -34,4 +34,7 @@ void quasar_step(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt
 // Compact dead bodies out of the array. Returns new count.
 int quasar_compact(Body *bodies, int n);
 
+/* Test-only wrapper */
+void decay_jets_wrapper(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt);
+
 #endif

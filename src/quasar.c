@@ -510,3 +510,9 @@ int quasar_compact(Body *bodies, int n)
     }
     return write;
 }
+
+/* Test wrapper — exposes static decay_jets for unit testing */
+void decay_jets_wrapper(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt)
+{
+    decay_jets(bodies, n, n_alloc, cfg, dt);
+}

@@ -730,6 +730,109 @@ static int test_recycle_distant_jets_repositions(void)
     return 1;
 }
 
+static int test_jet_ring_spawns_multiple_particles(void)
+{
+    /* A single SMBH with luminosity should spawn ring_count particles
+       per jet pulse direction, not just 1 */
+    Body bodies[200];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].spin_y = 0.7071;
+    bodies[0].spin_z = 0.7071;
+    bodies[0].luminosity = 10.0;
+    bodies[0].accretion_rate = 100.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    cfg.jet_cap = 200;
+    cfg.jet_ring_count = 4;
+    int n = 1;
+
+    quasar_step(bodies, &n, 200, &cfg, 0.005);
+
+    /* With ring_count=4, each pulse direction spawns 4 particles.
+       n_spawn=2 means 2 directions, plus possible bursts.
+       Should have significantly more than 2 jet particles. */
+    int jet_count = 0;
+    for (int i = 1; i < n; i++) {
+        if (bodies[i].type == BODY_JET) jet_count++;
+    }
+    ASSERT(jet_count >= 6, "ring spawning should produce multiple particles per pulse");
+
+    return 1;
+}
+
+static int test_jet_approaching_vs_receding_velocity(void)
+{
+    /* Jets spawn in both +spin and -spin directions.
+       Verify that both directions are present (beaming is shader-side,
+       but physics must emit both jets for the effect to work). */
+    Body bodies[100];
+    memset(bodies, 0, sizeof(bodies));
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].spin_y = 0.7071;
+    bodies[0].spin_z = 0.7071;
+    bodies[0].luminosity = 10.0;
+    bodies[0].accretion_rate = 100.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    cfg.jet_cap = 100;
+    int n = 1;
+
+    quasar_step(bodies, &n, 100, &cfg, 0.005);
+
+    int positive_dir = 0, negative_dir = 0;
+    for (int i = 1; i < n; i++) {
+        if (bodies[i].type != BODY_JET) continue;
+        /* Check vy+vz sign (spin axis is +y,+z) */
+        double v_spin = bodies[i].vy * 0.7071 + bodies[i].vz * 0.7071;
+        if (v_spin > 1.0) positive_dir++;
+        if (v_spin < -1.0) negative_dir++;
+    }
+    ASSERT(positive_dir > 0, "should spawn jets in +spin direction");
+    ASSERT(negative_dir > 0, "should spawn jets in -spin direction");
+
+    return 1;
+}
+
+static int test_lobe_spawns_on_jet_death(void)
+{
+    /* A dying jet particle should spawn a BODY_LOBE */
+    Body bodies[10];
+    memset(bodies, 0, sizeof(bodies));
+
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].spin_z = 1.0;
+
+    bodies[1].type = BODY_JET;
+    bodies[1].mass = 0.5;
+    bodies[1].x = 20.0;
+    bodies[1].vx = 5.0;
+    bodies[1].lifetime = 0.001; /* about to die */
+
+    QuasarConfig cfg = quasar_default_config();
+    cfg.jet_count = 1;
+    int n = 2;
+
+    /* Step with dt large enough to kill the jet */
+    decay_jets_wrapper(bodies, &n, 10, &cfg, 0.01);
+
+    /* Jet should be dead */
+    ASSERT_NEAR(bodies[1].mass, 0.0, 1e-12, "jet should be dead");
+
+    /* A lobe should have been spawned */
+    int lobe_count = 0;
+    for (int i = 0; i < n; i++) {
+        if (bodies[i].type == BODY_LOBE) lobe_count++;
+    }
+    ASSERT(lobe_count >= 1, "lobe should be spawned when jet dies");
+    ASSERT_NEAR(bodies[2].x, 20.0, 1.0, "lobe should be near jet death position");
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -774,6 +877,9 @@ int main(void)
     RUN_TEST(test_camera_distance_smoothing_clamps);
     RUN_TEST(test_merger_midpoint_tracking);
     RUN_TEST(test_recycle_distant_jets_repositions);
+    RUN_TEST(test_jet_ring_spawns_multiple_particles);
+    RUN_TEST(test_jet_approaching_vs_receding_velocity);
+    RUN_TEST(test_lobe_spawns_on_jet_death);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
