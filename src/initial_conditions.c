@@ -176,8 +176,8 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
     double disk_radius = separation * 0.15;
     /* Approximate galaxy mass from the body count (matches generate_quasar_merger) */
     double galaxy_mass = (double)(start_idx / 2) * 2.0;
-    double galaxy_mass2 = galaxy_mass * 0.7;
-    double disk_r2 = disk_radius * 0.8;
+    double galaxy_mass2 = galaxy_mass * 1.2;
+    double disk_r2 = disk_radius * 1.3;
 
     double cx1 = -separation * 0.5;
     double cx2 = separation * 0.5;
@@ -250,15 +250,16 @@ void generate_quasar_merger(
 
     double disk_radius = separation * 0.15;
     double galaxy_mass = (double)n1 * 2.0;
-    double total_mass = galaxy_mass + galaxy_mass * 0.7;
+    // Andromeda/Milky Way mass ratio: M31 is ~1.2x MW mass
+    double galaxy2_mass_ratio = 1.2;
+    double total_mass = galaxy_mass + galaxy_mass * galaxy2_mass_ratio;
 
     // Compute orbital velocity for a decaying merger encounter.
-    // v_circ = sqrt(G * M_total / r) gives circular orbit speed.
-    // Use 0.35 * v_circ for a bound orbit with enough angular momentum
-    // for one visible pass with tidal tails, but low enough to merge
-    // within the simulation via dynamical friction.
+    // MW-Andromeda approach is nearly radial (v_tangential ~ 0.17 * v_radial)
+    // Use 0.2 * v_circ for small tangential component — produces one
+    // grazing pass with tidal tails then rapid merger via dynamical friction.
     double v_circ = sqrt(total_mass / separation);
-    double v_orbit = v_circ * 0.35;
+    double v_orbit = v_circ * 0.2;
 
     // Galaxy 1: left, moving up (tangential)
     // Small radial component for slight infall, large tangential for orbit
@@ -267,7 +268,7 @@ void generate_quasar_merger(
 
     // Galaxy 2: right, moving down (opposite tangential)
     double vx2 = -approach_vel;
-    double vy2 = -v_orbit * 0.7; // slightly less (mass ratio asymmetry)
+    double vy2 = -v_orbit * 0.85; // slightly less (MW lighter than M31)
 
     generate_quasar_galaxy(
         bodies, n1, -separation * 0.5, 0.0, galaxy_mass, disk_radius, vx1, vy1, smbh_mass_frac);
@@ -278,8 +279,8 @@ void generate_quasar_merger(
                            n2,
                            separation * 0.5,
                            0.0,
-                           galaxy_mass * 0.7,
-                           disk_radius * 0.8,
+                           galaxy_mass * galaxy2_mass_ratio,
+                           disk_radius * 1.3,
                            vx2,
                            vy2,
                            smbh_mass_frac);
