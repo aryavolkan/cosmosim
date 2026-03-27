@@ -4,33 +4,37 @@ in vec2 v_uv;
 uniform sampler2D u_scene;
 uniform sampler2D u_bloom;
 uniform float u_bloom_intensity;
-uniform vec2 u_smbh_screen;
-uniform float u_smbh_mass;
-uniform float u_lensing_strength;
 uniform float u_exposure;
-uniform float u_eh_radius;
 uniform float u_aspect;
+
+// Up to 2 SMBHs
+uniform int u_smbh_count;
+uniform vec2 u_smbh_screen[2];
+uniform float u_smbh_mass[2];
+uniform float u_lensing_strength[2];
+uniform float u_eh_radius[2];
 
 out vec4 frag_color;
 
 void main()
 {
-    // Aspect-corrected distance from SMBH center
-    vec2 delta = v_uv - u_smbh_screen;
-    delta.x *= u_aspect;
-    float dist = length(delta);
-
-    // Gravitational lensing: stronger near the event horizon
+    // Accumulate lensing from all SMBHs
     vec2 scene_uv = v_uv;
-    if (dist > 0.001 && u_lensing_strength > 0.0) {
-        float deflection = u_lensing_strength / (dist * dist + 0.0005);
-        deflection = min(deflection, 0.15);
-        vec2 dir = normalize(delta);
-        // Undo aspect correction for UV offset
-        dir.x /= u_aspect;
-        scene_uv = v_uv + dir * deflection;
-        scene_uv = clamp(scene_uv, vec2(0.0), vec2(1.0));
+    for (int s = 0; s < 2; s++) {
+        if (s >= u_smbh_count) break;
+        vec2 delta = v_uv - u_smbh_screen[s];
+        delta.x *= u_aspect;
+        float dist = length(delta);
+
+        if (dist > 0.001 && u_lensing_strength[s] > 0.0) {
+            float deflection = u_lensing_strength[s] / (dist * dist + 0.0005);
+            deflection = min(deflection, 0.15);
+            vec2 dir = normalize(delta);
+            dir.x /= u_aspect;
+            scene_uv += dir * deflection;
+        }
     }
+    scene_uv = clamp(scene_uv, vec2(0.0), vec2(1.0));
 
     vec3 hdr_color = texture(u_scene, scene_uv).rgb;
     vec3 bloom_color = texture(u_bloom, v_uv).rgb;
@@ -38,11 +42,18 @@ void main()
     // Combine scene + bloom
     vec3 combined = hdr_color + bloom_color * u_bloom_intensity;
 
-    // Event horizon shadow and photon ring
-    float r_eh = u_eh_radius;
-    if (r_eh > 0.001) {
-        float r_shadow = r_eh * 2.6;  // black hole shadow ~2.6x Schwarzschild
-        float r_photon = r_eh * 3.5;  // photon sphere
+    // Event horizon shadow and photon ring for each SMBH
+    for (int s = 0; s < 2; s++) {
+        if (s >= u_smbh_count) break;
+        float r_eh = u_eh_radius[s];
+        if (r_eh < 0.001) continue;
+
+        vec2 delta = v_uv - u_smbh_screen[s];
+        delta.x *= u_aspect;
+        float dist = length(delta);
+
+        float r_shadow = r_eh * 2.6;
+        float r_photon = r_eh * 3.5;
 
         // Event horizon: fully dark inside shadow radius
         float shadow_mask = smoothstep(r_shadow * 0.85, r_shadow, dist);

@@ -10,11 +10,21 @@ typedef struct {
     float target_x, target_y, target_z;
 } Camera;
 
+#define MAX_SMBH 2
+
+typedef struct {
+    float x, y, z;
+    float luminosity;
+    float mass;
+} SMBHInfo;
+
 typedef struct {
     int hdr_enabled;
-    float smbh_x, smbh_y, smbh_z;
+    float smbh_x, smbh_y, smbh_z;       // primary SMBH (backwards compat)
     float smbh_luminosity;
     float smbh_mass;
+    SMBHInfo smbhs[MAX_SMBH];
+    int smbh_count;
     int bloom_iterations;
     int lensing_samples;
     float exposure;

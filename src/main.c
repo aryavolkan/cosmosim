@@ -417,9 +417,8 @@ int main(int argc, char **argv)
             renderer_update_smbh(&rcfg, bodies, current_n);
         }
 
-        float smooth_smbh_x = render_cam.target_x;
-        float smooth_smbh_y = render_cam.target_y;
-        float smooth_smbh_z = render_cam.target_z;
+        float smooth_smbh[MAX_SMBH][3] = {{0}};
+        int smooth_smbh_init = 0;
 
         printf("Rendering %d frames at %dx%d to %s/\n",
                render_frames, render_width, render_height, render_dir);
@@ -501,19 +500,32 @@ int main(int argc, char **argv)
             /* Render to FBO */
             if (quasar) {
                 renderer_update_smbh(&rcfg, bodies, current_n);
-                // Smooth SMBH render position to eliminate event horizon jitter
-                if (frame == 0) {
-                    smooth_smbh_x = rcfg.smbh_x;
-                    smooth_smbh_y = rcfg.smbh_y;
-                    smooth_smbh_z = rcfg.smbh_z;
+                // Smooth all SMBH render positions to eliminate event horizon jitter
+                if (!smooth_smbh_init) {
+                    for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
+                        smooth_smbh[s][0] = rcfg.smbhs[s].x;
+                        smooth_smbh[s][1] = rcfg.smbhs[s].y;
+                        smooth_smbh[s][2] = rcfg.smbhs[s].z;
+                    }
+                    smooth_smbh_init = 1;
                 } else {
-                    smooth_smbh_x = 0.9f * smooth_smbh_x + 0.1f * rcfg.smbh_x;
-                    smooth_smbh_y = 0.9f * smooth_smbh_y + 0.1f * rcfg.smbh_y;
-                    smooth_smbh_z = 0.9f * smooth_smbh_z + 0.1f * rcfg.smbh_z;
+                    for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
+                        smooth_smbh[s][0] = 0.9f * smooth_smbh[s][0] + 0.1f * rcfg.smbhs[s].x;
+                        smooth_smbh[s][1] = 0.9f * smooth_smbh[s][1] + 0.1f * rcfg.smbhs[s].y;
+                        smooth_smbh[s][2] = 0.9f * smooth_smbh[s][2] + 0.1f * rcfg.smbhs[s].z;
+                    }
                 }
-                rcfg.smbh_x = smooth_smbh_x;
-                rcfg.smbh_y = smooth_smbh_y;
-                rcfg.smbh_z = smooth_smbh_z;
+                for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
+                    rcfg.smbhs[s].x = smooth_smbh[s][0];
+                    rcfg.smbhs[s].y = smooth_smbh[s][1];
+                    rcfg.smbhs[s].z = smooth_smbh[s][2];
+                }
+                // Keep primary in sync
+                if (rcfg.smbh_count > 0) {
+                    rcfg.smbh_x = rcfg.smbhs[0].x;
+                    rcfg.smbh_y = rcfg.smbhs[0].y;
+                    rcfg.smbh_z = rcfg.smbhs[0].z;
+                }
             }
             renderer_draw(bodies, current_n, &render_cam,
                           render_width, render_height, &rcfg);

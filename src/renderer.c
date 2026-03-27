@@ -219,15 +219,25 @@ int renderer_init(const RendererConfig *rcfg)
 
 void renderer_update_smbh(RendererConfig *rcfg, const Body *bodies, int n)
 {
-    for (int i = 0; i < n; i++) {
+    rcfg->smbh_count = 0;
+    for (int i = 0; i < n && rcfg->smbh_count < MAX_SMBH; i++) {
         if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
-            rcfg->smbh_x = (float)bodies[i].x;
-            rcfg->smbh_y = (float)bodies[i].y;
-            rcfg->smbh_z = (float)bodies[i].z;
-            rcfg->smbh_luminosity = (float)bodies[i].luminosity;
-            rcfg->smbh_mass = (float)bodies[i].mass;
-            break;
+            int idx = rcfg->smbh_count;
+            rcfg->smbhs[idx].x = (float)bodies[i].x;
+            rcfg->smbhs[idx].y = (float)bodies[i].y;
+            rcfg->smbhs[idx].z = (float)bodies[i].z;
+            rcfg->smbhs[idx].luminosity = (float)bodies[i].luminosity;
+            rcfg->smbhs[idx].mass = (float)bodies[i].mass;
+            rcfg->smbh_count++;
         }
+    }
+    // Keep primary fields in sync (backwards compat)
+    if (rcfg->smbh_count > 0) {
+        rcfg->smbh_x = rcfg->smbhs[0].x;
+        rcfg->smbh_y = rcfg->smbhs[0].y;
+        rcfg->smbh_z = rcfg->smbhs[0].z;
+        rcfg->smbh_luminosity = rcfg->smbhs[0].luminosity;
+        rcfg->smbh_mass = rcfg->smbhs[0].mass;
     }
 }
 
@@ -414,32 +424,41 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
             }
         }
 
-        // Compute SMBH screen position for lensing
-        const float mv[4] = {
-            view[0]*rcfg->smbh_x + view[4]*rcfg->smbh_y + view[8]*rcfg->smbh_z + view[12],
-            view[1]*rcfg->smbh_x + view[5]*rcfg->smbh_y + view[9]*rcfg->smbh_z + view[13],
-            view[2]*rcfg->smbh_x + view[6]*rcfg->smbh_y + view[10]*rcfg->smbh_z + view[14],
-            view[3]*rcfg->smbh_x + view[7]*rcfg->smbh_y + view[11]*rcfg->smbh_z + view[15]
-        };
-        float smbh_clip_x = proj[0]*mv[0] + proj[4]*mv[1] + proj[8]*mv[2] + proj[12]*mv[3];
-        float smbh_clip_y = proj[1]*mv[0] + proj[5]*mv[1] + proj[9]*mv[2] + proj[13]*mv[3];
-        float smbh_clip_w = proj[3]*mv[0] + proj[7]*mv[1] + proj[11]*mv[2] + proj[15]*mv[3];
+        // Compute screen positions and event horizon radii for all SMBHs
+        float smbh_screens[MAX_SMBH * 2] = {0};  // x,y pairs in NDC
+        float smbh_eh_radii[MAX_SMBH] = {0};
+        float smbh_masses[MAX_SMBH] = {0};
+        float smbh_lensing[MAX_SMBH] = {0};
+        int num_smbh = rcfg->smbh_count;
+        if (num_smbh > MAX_SMBH) num_smbh = MAX_SMBH;
 
-        float smbh_ndc_x = 0.5f, smbh_ndc_y = 0.5f;
-        if (smbh_clip_w > 0.001f) {
-            smbh_ndc_x = (smbh_clip_x / smbh_clip_w) * 0.5f + 0.5f;
-            smbh_ndc_y = (smbh_clip_y / smbh_clip_w) * 0.5f + 0.5f;
-        }
+        for (int s = 0; s < num_smbh; s++) {
+            float sx = rcfg->smbhs[s].x, sy = rcfg->smbhs[s].y, sz = rcfg->smbhs[s].z;
+            float smv[4] = {
+                view[0]*sx + view[4]*sy + view[8]*sz + view[12],
+                view[1]*sx + view[5]*sy + view[9]*sz + view[13],
+                view[2]*sx + view[6]*sy + view[10]*sz + view[14],
+                view[3]*sx + view[7]*sy + view[11]*sz + view[15]
+            };
+            float clip_x = proj[0]*smv[0] + proj[4]*smv[1] + proj[8]*smv[2] + proj[12]*smv[3];
+            float clip_y = proj[1]*smv[0] + proj[5]*smv[1] + proj[9]*smv[2] + proj[13]*smv[3];
+            float clip_w = proj[3]*smv[0] + proj[7]*smv[1] + proj[11]*smv[2] + proj[15]*smv[3];
 
-        // Compute event horizon angular radius in NDC
-        // Schwarzschild radius ~ 2GM/c^2, we use r_s = mass * 0.002 in sim units
-        float smbh_depth = -mv[2]; // camera-space depth (positive = in front)
-        float r_schwarzschild = rcfg->smbh_mass * 0.0005f;
-        float eh_ndc_radius = 0.0f;
-        if (smbh_depth > 0.1f) {
-            // Project radius to NDC using perspective: ndc_r = world_r * proj[0] / depth
-            eh_ndc_radius = r_schwarzschild * proj[0] / smbh_depth * 0.5f;
-            if (eh_ndc_radius > 0.06f) eh_ndc_radius = 0.06f;
+            smbh_screens[s*2+0] = 0.5f;
+            smbh_screens[s*2+1] = 0.5f;
+            if (clip_w > 0.001f) {
+                smbh_screens[s*2+0] = (clip_x / clip_w) * 0.5f + 0.5f;
+                smbh_screens[s*2+1] = (clip_y / clip_w) * 0.5f + 0.5f;
+            }
+
+            float depth = -smv[2];
+            float r_s = rcfg->smbhs[s].mass * 0.0005f;
+            if (depth > 0.1f) {
+                smbh_eh_radii[s] = r_s * proj[0] / depth * 0.5f;
+                if (smbh_eh_radii[s] > 0.06f) smbh_eh_radii[s] = 0.06f;
+            }
+            smbh_masses[s] = rcfg->smbhs[s].mass;
+            smbh_lensing[s] = rcfg->smbhs[s].mass * 0.001f;
         }
 
         // Composite to screen
@@ -456,14 +475,15 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
         glUniform1f(glGetUniformLocation(composite_program, "u_bloom_intensity"), 0.5f);
         glUniform1f(glGetUniformLocation(composite_program, "u_exposure"),
                     rcfg->exposure);
-        glUniform2f(glGetUniformLocation(composite_program, "u_smbh_screen"),
-                    smbh_ndc_x, smbh_ndc_y);
-        glUniform1f(glGetUniformLocation(composite_program, "u_smbh_mass"),
-                    rcfg->smbh_mass);
-        glUniform1f(glGetUniformLocation(composite_program, "u_lensing_strength"),
-                    rcfg->smbh_mass * 0.001f);
-        glUniform1f(glGetUniformLocation(composite_program, "u_eh_radius"),
-                    eh_ndc_radius);
+        glUniform1i(glGetUniformLocation(composite_program, "u_smbh_count"), num_smbh);
+        glUniform2fv(glGetUniformLocation(composite_program, "u_smbh_screen"),
+                     MAX_SMBH, smbh_screens);
+        glUniform1fv(glGetUniformLocation(composite_program, "u_smbh_mass"),
+                     MAX_SMBH, smbh_masses);
+        glUniform1fv(glGetUniformLocation(composite_program, "u_lensing_strength"),
+                     MAX_SMBH, smbh_lensing);
+        glUniform1fv(glGetUniformLocation(composite_program, "u_eh_radius"),
+                     MAX_SMBH, smbh_eh_radii);
         glUniform1f(glGetUniformLocation(composite_program, "u_aspect"),
                     aspect);
         draw_fullscreen_quad();
