@@ -50,6 +50,9 @@ void main()
     } else if (body_type == 4) {
         // DUST: slightly diffuse, moderate size
         base_size = clamp(2.0 + log(a_mass + 1.0) * 1.5, 2.0, 12.0);
+    } else if (body_type == 5) {
+        // LOBE: diffuse hotspot/cocoon
+        base_size = clamp(8.0 + log(a_mass + 1.0) * 3.0, 8.0, 30.0);
     } else {
         // STAR/GAS: mass-based
         base_size = clamp(1.0 + log(a_mass + 1.0) * 2.0, 1.0, 20.0);

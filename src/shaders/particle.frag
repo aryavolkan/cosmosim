@@ -68,6 +68,14 @@ void main()
         }
         intensity = exp(-r_sq * 7.0) * 0.35;
 
+    } else if (body_type == 5) {
+        // LOBE: diffuse warm glow at jet termination — hotspot + cocoon
+        vec3 lobe_hot  = vec3(2.0, 1.5, 0.8);   // hotspot core
+        vec3 lobe_cool = vec3(0.4, 0.3, 0.7);    // diffuse radio lobe
+        float core_frac = exp(-r_sq * 6.0);
+        color = mix(lobe_cool, lobe_hot, core_frac);
+        intensity = exp(-r_sq * 3.0) * 0.5; // very diffuse
+
     } else {
         // STAR: blue-orange mass gradient
         float t = clamp(log(v_mass + 1.0) / 5.0, 0.0, 1.0);

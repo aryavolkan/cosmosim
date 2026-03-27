@@ -361,17 +361,49 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
     }
 }
 
-static void decay_jets(Body *bodies, int n, QuasarConfig *cfg, double dt)
+static void decay_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt)
 {
-    for (int i = 0; i < n; i++) {
+    int current_n = *n;
+    for (int i = 0; i < current_n; i++) {
         if (bodies[i].type != BODY_JET || bodies[i].mass <= 0.0)
+            continue;
+        bodies[i].lifetime -= dt;
+        if (bodies[i].lifetime <= 0.0) {
+            /* Spawn a lobe particle at the jet termination point */
+            if (*n < n_alloc && bodies[i].mass > 0.2) {
+                Body *lobe = &bodies[*n];
+                memset(lobe, 0, sizeof(Body));
+                lobe->type = BODY_LOBE;
+                lobe->mass = bodies[i].mass * 0.5;
+                lobe->x = bodies[i].x;
+                lobe->y = bodies[i].y;
+                lobe->z = bodies[i].z;
+                /* Slow expansion from jet momentum + random spread */
+                double spread = 0.5;
+                lobe->vx = bodies[i].vx * 0.15 + (qrng_uniform() - 0.5) * spread;
+                lobe->vy = bodies[i].vy * 0.15 + (qrng_uniform() - 0.5) * spread;
+                lobe->vz = bodies[i].vz * 0.15 + (qrng_uniform() - 0.5) * spread;
+                lobe->lifetime = cfg->jet_lifetime * 3.0; /* lobes persist longer */
+                (*n)++;
+            }
+
+            /* Kill the jet particle */
+            bodies[i].mass = 0.0;
+            bodies[i].vx = bodies[i].vy = bodies[i].vz = 0.0;
+            bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+            cfg->jet_count--;
+        }
+    }
+
+    /* Decay lobe particles */
+    for (int i = 0; i < *n; i++) {
+        if (bodies[i].type != BODY_LOBE || bodies[i].mass <= 0.0)
             continue;
         bodies[i].lifetime -= dt;
         if (bodies[i].lifetime <= 0.0) {
             bodies[i].mass = 0.0;
             bodies[i].vx = bodies[i].vy = bodies[i].vz = 0.0;
             bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
-            cfg->jet_count--;
         }
     }
 }
@@ -456,7 +488,7 @@ void quasar_step(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt
     apply_feedback(bodies, *n, cfg);
 
     // 4. Decay expired jet particles
-    decay_jets(bodies, *n, cfg, dt);
+    decay_jets(bodies, n, n_alloc, cfg, dt);
 
     // 4b. Recycle distant jet particles as infalling gas
     recycle_distant_jets(bodies, *n, cfg);
