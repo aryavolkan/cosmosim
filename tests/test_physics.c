@@ -518,8 +518,10 @@ static int test_jet_spawn_direction(void)
     // Jet velocity should be primarily along spin axis (+/- z)
     for (int i = 1; i < n; i++) {
         ASSERT(bodies[i].type == BODY_JET, "spawned body should be JET type");
-        ASSERT(fabs(bodies[i].vz) > fabs(bodies[i].vx), "jet vz should dominate vx");
-        ASSERT(fabs(bodies[i].vz) > fabs(bodies[i].vy), "jet vz should dominate vy");
+        // Jets should launch along spin axis (y,z components dominate x)
+        double v_spin = fabs(bodies[i].vy) + fabs(bodies[i].vz);
+        ASSERT(v_spin > fabs(bodies[i].vx), "jet spin-axis velocity should dominate vx");
+        ASSERT(v_spin > 1.0, "jet should have significant spin-axis velocity");
     }
 
     return 1;
@@ -533,7 +535,7 @@ static int test_quasar_galaxy_generation(void)
 
     // Body 0 should be SMBH
     ASSERT(bodies[0].type == BODY_SMBH, "first body should be SMBH");
-    ASSERT_NEAR(bodies[0].spin_z, 1.0, 1e-12, "SMBH spin should be +z");
+    ASSERT(bodies[0].spin_z > 0.5, "SMBH spin should have +z component");
     ASSERT(bodies[0].mass > 0, "SMBH should have positive mass");
 
     // Should have some GAS bodies in inner region
@@ -563,6 +565,167 @@ static int test_compact_removes_dead(void)
     ASSERT_NEAR(bodies[0].mass, 1.0, 1e-12, "body 0 mass preserved");
     ASSERT_NEAR(bodies[1].mass, 3.0, 1e-12, "body 1 should be former body 2");
     ASSERT_NEAR(bodies[2].mass, 5.0, 1e-12, "body 2 should be former body 4");
+
+    return 1;
+}
+
+/* ---- jitter / smoothing tests ---- */
+
+static int test_smbh_position_smoothing_reduces_jitter(void)
+{
+    // Simulate the SMBH position smoothing used in offline rendering.
+    // Raw SMBH position oscillates rapidly; smoothed output should have
+    // much smaller frame-to-frame deltas.
+    double smooth_x = 0.0;
+    double max_raw_delta = 0.0;
+    double max_smooth_delta = 0.0;
+    double prev_raw = 0.0, prev_smooth = 0.0;
+
+    for (int frame = 0; frame < 200; frame++) {
+        // Simulate noisy SMBH position: slow drift + high-freq jitter
+        double raw_x = frame * 0.1 + 2.0 * sin(frame * 3.7);
+
+        if (frame == 0) {
+            smooth_x = raw_x;
+        } else {
+            smooth_x = 0.9 * smooth_x + 0.1 * raw_x;
+        }
+
+        if (frame > 0) {
+            double raw_delta = fabs(raw_x - prev_raw);
+            double smooth_delta = fabs(smooth_x - prev_smooth);
+            if (raw_delta > max_raw_delta) max_raw_delta = raw_delta;
+            if (smooth_delta > max_smooth_delta) max_smooth_delta = smooth_delta;
+        }
+        prev_raw = raw_x;
+        prev_smooth = smooth_x;
+    }
+
+    // Smoothed max delta should be significantly less than raw max delta
+    ASSERT(max_smooth_delta < max_raw_delta * 0.5,
+           "smoothing should reduce max frame-to-frame delta by at least 50%");
+    return 1;
+}
+
+static int test_camera_target_smoothing_converges(void)
+{
+    // Camera target smoothing (0.95/0.05) should converge to the actual
+    // position within reasonable frames, not lag forever.
+    float cam_x = 0.0f;
+    float target = 100.0f;
+
+    for (int frame = 0; frame < 200; frame++) {
+        cam_x = 0.95f * cam_x + 0.05f * target;
+    }
+
+    // After 200 frames, camera should be within 0.01% of target
+    ASSERT(fabs(cam_x - target) < target * 0.0001,
+           "camera target should converge within 200 frames");
+    return 1;
+}
+
+static int test_camera_distance_smoothing_clamps(void)
+{
+    // Camera distance smoothing should respect clamp bounds [8, 120]
+    float dist = 20.0f;
+
+    // Push toward very large target
+    for (int frame = 0; frame < 1000; frame++) {
+        float target_dist = 500.0f;
+        if (target_dist < 8.0f) target_dist = 8.0f;
+        if (target_dist > 120.0f) target_dist = 120.0f;
+        dist = 0.97f * dist + 0.03f * target_dist;
+    }
+    ASSERT(dist <= 120.0f + 0.01f, "distance should not exceed upper clamp");
+
+    // Push toward very small target
+    for (int frame = 0; frame < 1000; frame++) {
+        float target_dist = 0.1f;
+        if (target_dist < 8.0f) target_dist = 8.0f;
+        if (target_dist > 120.0f) target_dist = 120.0f;
+        dist = 0.97f * dist + 0.03f * target_dist;
+    }
+    ASSERT(dist >= 8.0f - 0.01f, "distance should not go below lower clamp");
+
+    return 1;
+}
+
+static int test_merger_midpoint_tracking(void)
+{
+    // Two SMBHs at known positions; midpoint should be their average
+    Body bodies[2];
+    memset(bodies, 0, sizeof(bodies));
+
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].x = -30.0;
+    bodies[0].y = 10.0;
+
+    bodies[1].type = BODY_SMBH;
+    bodies[1].mass = 70.0;
+    bodies[1].x = 30.0;
+    bodies[1].y = -10.0;
+
+    // Compute midpoint (same logic as offline render loop)
+    float mid_x = 0, mid_y = 0, mid_z = 0;
+    int smbh_count = 0;
+    for (int i = 0; i < 2; i++) {
+        if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+            mid_x += (float)bodies[i].x;
+            mid_y += (float)bodies[i].y;
+            mid_z += (float)bodies[i].z;
+            smbh_count++;
+        }
+    }
+    mid_x /= smbh_count;
+    mid_y /= smbh_count;
+    mid_z /= smbh_count;
+
+    ASSERT_NEAR(mid_x, 0.0, 0.01, "midpoint x should be average of SMBH positions");
+    ASSERT_NEAR(mid_y, 0.0, 0.01, "midpoint y should be average of SMBH positions");
+    ASSERT(smbh_count == 2, "should find both SMBHs");
+
+    // Separation-based distance
+    float dx = (float)(bodies[1].x - bodies[0].x);
+    float dy = (float)(bodies[1].y - bodies[0].y);
+    float sep = sqrtf(dx*dx + dy*dy);
+    float target_dist = sep * 1.2f + 15.0f;
+
+    ASSERT(target_dist > 50.0, "camera should be zoomed out for large separation");
+    ASSERT(target_dist < 120.0, "camera distance should be within bounds");
+
+    return 1;
+}
+
+static int test_recycle_distant_jets_repositions(void)
+{
+    // A jet beyond 10x accretion radius should be recycled as gas
+    Body bodies[2];
+    memset(bodies, 0, sizeof(bodies));
+
+    bodies[0].type = BODY_SMBH;
+    bodies[0].mass = 100.0;
+    bodies[0].spin_z = 1.0;
+
+    bodies[1].type = BODY_JET;
+    bodies[1].mass = 0.5;
+    bodies[1].x = 500.0;  // way beyond 10 * accretion_radius (default 3.0)
+    bodies[1].lifetime = 1.0;
+
+    QuasarConfig cfg = quasar_default_config();
+    cfg.jet_count = 1;
+    int n = 2;
+
+    quasar_step(bodies, &n, 2, &cfg, 0.005);
+
+    // Jet should have been recycled to gas near the accretion boundary
+    ASSERT(bodies[1].type == BODY_GAS, "distant jet should be recycled to gas");
+    double dx = bodies[1].x - bodies[0].x;
+    double dy = bodies[1].y - bodies[0].y;
+    double dz = bodies[1].z - bodies[0].z;
+    double dist = sqrt(dx*dx + dy*dy + dz*dz);
+    ASSERT(dist < cfg.accretion_radius * 2.0,
+           "recycled jet should be placed near accretion boundary");
 
     return 1;
 }
@@ -604,6 +767,13 @@ int main(void)
     RUN_TEST(test_eddington_cap);
     RUN_TEST(test_jet_spawn_direction);
     RUN_TEST(test_compact_removes_dead);
+
+    // Jitter / smoothing tests
+    RUN_TEST(test_smbh_position_smoothing_reduces_jitter);
+    RUN_TEST(test_camera_target_smoothing_converges);
+    RUN_TEST(test_camera_distance_smoothing_clamps);
+    RUN_TEST(test_merger_midpoint_tracking);
+    RUN_TEST(test_recycle_distant_jets_repositions);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

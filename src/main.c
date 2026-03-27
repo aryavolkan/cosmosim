@@ -14,18 +14,18 @@
 #include "initial_conditions.h"
 #include "quasar.h"
 
-#define DEFAULT_N       20000
-#define G               1.0
-#define SOFTENING       0.5
-#define THETA           0.5
-#define DT              0.005
-#define SUBSTEPS        2
-#define WINDOW_WIDTH    1280
-#define WINDOW_HEIGHT   800
+#define DEFAULT_N                  20000
+#define G                          1.0
+#define SOFTENING                  1.5
+#define THETA                      0.5
+#define DT                         0.005
+#define SUBSTEPS                   2
+#define WINDOW_WIDTH               1280
+#define WINDOW_HEIGHT              800
 #define DEFAULT_SMBH_MASS_FRAC     0.05
-#define DEFAULT_ACCRETION_RADIUS   3.0
-#define DEFAULT_JET_SPEED          20.0
-#define DEFAULT_FEEDBACK_STRENGTH  1.0
+#define DEFAULT_ACCRETION_RADIUS   6.0
+#define DEFAULT_JET_SPEED          15.0
+#define DEFAULT_FEEDBACK_STRENGTH  0.3
 #define DEFAULT_RENDER_WIDTH       1920
 #define DEFAULT_RENDER_HEIGHT      1080
 #define DEFAULT_RENDER_FRAMES      1000
@@ -46,12 +46,14 @@ static int setup_render_fbo(int width, int height)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, render_color_tex, 0);
+    glFramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, render_color_tex, 0);
 
     glGenRenderbuffers(1, &render_depth_rbo);
     glBindRenderbuffer(GL_RENDERBUFFER, render_depth_rbo);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, render_depth_rbo);
+    glFramebufferRenderbuffer(
+        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, render_depth_rbo);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         fprintf(stderr, "Render FBO incomplete\n");
@@ -65,7 +67,8 @@ static int setup_render_fbo(int width, int height)
 static int save_ppm(const char *path, int width, int height, const unsigned char *pixels)
 {
     FILE *f = fopen(path, "wb");
-    if (!f) return -1;
+    if (!f)
+        return -1;
     fprintf(f, "P6\n%d %d\n255\n", width, height);
     /* OpenGL gives bottom-up; write top-down */
     for (int y = height - 1; y >= 0; y--) {
@@ -93,8 +96,10 @@ static void scroll_callback(GLFWwindow *window, double xoff, double yoff)
     (void)window;
     (void)xoff;
     camera.distance *= (float)(1.0 - 0.1 * yoff);
-    if (camera.distance < 1.0f) camera.distance = 1.0f;
-    if (camera.distance > 100000.0f) camera.distance = 100000.0f;
+    if (camera.distance < 1.0f)
+        camera.distance = 1.0f;
+    if (camera.distance > 100000.0f)
+        camera.distance = 100000.0f;
 }
 
 static void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
@@ -120,7 +125,8 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action, in
 
 static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
 {
-    if (!dragging_left && !dragging_right) return;
+    if (!dragging_left && !dragging_right)
+        return;
 
     double dx = xpos - last_cursor_x;
     double dy = ypos - last_cursor_y;
@@ -133,8 +139,10 @@ static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
         camera.elevation += (float)(dy * 0.005);
         // Clamp elevation to avoid gimbal lock
         float limit = 1.5f; // ~86 degrees
-        if (camera.elevation > limit) camera.elevation = limit;
-        if (camera.elevation < -limit) camera.elevation = -limit;
+        if (camera.elevation > limit)
+            camera.elevation = limit;
+        if (camera.elevation < -limit)
+            camera.elevation = -limit;
     }
 
     if (dragging_right) {
@@ -149,14 +157,14 @@ static void cursor_pos_callback(GLFWwindow *window, double xpos, double ypos)
 
         // Right vector (in XY plane)
         float rx = -sin_az;
-        float ry =  cos_az;
+        float ry = cos_az;
 
         // Up vector (simplified, based on elevation)
         float cos_el = cosf(camera.elevation);
         float sin_el = sinf(camera.elevation);
         float ux = -sin_el * cos_az;
         float uy = -sin_el * sin_az;
-        float uz =  cos_el;
+        float uz = cos_el;
 
         camera.target_x += (float)(-dx * scale) * rx + (float)(dy * scale) * ux;
         camera.target_y += (float)(-dx * scale) * ry + (float)(dy * scale) * uy;
@@ -168,10 +176,13 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 {
     (void)scancode;
     (void)mods;
-    if (action != GLFW_PRESS) return;
+    if (action != GLFW_PRESS)
+        return;
 
-    if (key == GLFW_KEY_SPACE) paused = !paused;
-    if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, 1);
+    if (key == GLFW_KEY_SPACE)
+        paused = !paused;
+    if (key == GLFW_KEY_Q || key == GLFW_KEY_ESCAPE)
+        glfwSetWindowShouldClose(window, 1);
     // Reset camera
     if (key == GLFW_KEY_R) {
         camera.azimuth = 0.8f;
@@ -270,21 +281,34 @@ int main(int argc, char **argv)
                    "  R             Reset camera\n"
                    "  Q/Esc         Quit\n"
                    "\nCombine frames into video:\n"
-                   "  ffmpeg -framerate 60 -i <dir>/frame_%%06d.ppm -c:v libx264 -pix_fmt yuv420p out.mp4\n",
-                   DEFAULT_N, DT, THETA,
-                   DEFAULT_SMBH_MASS_FRAC, DEFAULT_ACCRETION_RADIUS,
-                   DEFAULT_JET_SPEED, DEFAULT_FEEDBACK_STRENGTH,
-                   DEFAULT_RENDER_FRAMES, DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT,
-                   DEFAULT_RENDER_SUBSTEPS, (double)DEFAULT_RENDER_ORBIT_SPEED);
+                   "  ffmpeg -framerate 60 -i <dir>/frame_%%06d.ppm -c:v libx264 -pix_fmt yuv420p "
+                   "out.mp4\n",
+                   DEFAULT_N,
+                   DT,
+                   THETA,
+                   DEFAULT_SMBH_MASS_FRAC,
+                   DEFAULT_ACCRETION_RADIUS,
+                   DEFAULT_JET_SPEED,
+                   DEFAULT_FEEDBACK_STRENGTH,
+                   DEFAULT_RENDER_FRAMES,
+                   DEFAULT_RENDER_WIDTH,
+                   DEFAULT_RENDER_HEIGHT,
+                   DEFAULT_RENDER_SUBSTEPS,
+                   (double)DEFAULT_RENDER_ORBIT_SPEED);
             return 0;
         }
     }
 
-    if (n < 2) n = 2;
+    if (n < 2)
+        n = 2;
     int substeps = render_dir ? render_substeps : (high_fidelity ? 8 : SUBSTEPS);
 
     printf("cosmosim: %d bodies, %s%s mode, dt=%.4f, theta=%.2f\n",
-           n, merger ? "merger" : "galaxy", quasar ? " quasar" : "", dt, theta);
+           n,
+           merger ? "merger" : "galaxy",
+           quasar ? " quasar" : "",
+           dt,
+           theta);
 
     if (!glfwInit()) {
         fprintf(stderr, "Failed to initialize GLFW\n");
@@ -295,12 +319,14 @@ int main(int argc, char **argv)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
-    if (render_dir) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    if (render_dir)
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
-    GLFWwindow *window = glfwCreateWindow(
-        render_dir ? render_width : WINDOW_WIDTH,
-        render_dir ? render_height : WINDOW_HEIGHT,
-        "cosmosim", NULL, NULL);
+    GLFWwindow *window = glfwCreateWindow(render_dir ? render_width : WINDOW_WIDTH,
+                                          render_dir ? render_height : WINDOW_HEIGHT,
+                                          "cosmosim",
+                                          NULL,
+                                          NULL);
     if (!window) {
         fprintf(stderr, "Failed to create window\n");
         glfwTerminate();
@@ -329,6 +355,7 @@ int main(int argc, char **argv)
     rcfg.hdr_enabled = quasar || render_dir;
     rcfg.bloom_iterations = (render_dir || high_fidelity) ? 4 : 2;
     rcfg.lensing_samples = (render_dir || high_fidelity) ? 4 : 1;
+    rcfg.exposure = 1.0f;
 
     if (renderer_init(&rcfg) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
@@ -351,8 +378,8 @@ int main(int argc, char **argv)
         if (merger) {
             generate_quasar_merger(bodies, n, 60.0, 0.3, smbh_mass_frac);
         } else {
-            generate_quasar_galaxy(bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0,
-                                   0.0, 0.0, smbh_mass_frac);
+            generate_quasar_galaxy(
+                bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0, 0.0, 0.0, smbh_mass_frac);
         }
     } else {
         if (merger) {
@@ -392,12 +419,43 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        Camera render_cam = {0.8f, 0.4f, 80.0f, 0.0f, 0.0f, 0.0f};
+        Camera render_cam = {0.8f, 0.4f, 20.0f, 0.0f, 0.0f, 0.0f};
+
+        // Initialize camera target to midpoint of all SMBHs
+        if (quasar) {
+            float mid_x = 0, mid_y = 0, mid_z = 0;
+            int smbh_count = 0;
+            for (int i = 0; i < current_n; i++) {
+                if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+                    mid_x += (float)bodies[i].x;
+                    mid_y += (float)bodies[i].y;
+                    mid_z += (float)bodies[i].z;
+                    smbh_count++;
+                }
+            }
+            if (smbh_count > 0) {
+                render_cam.target_x = mid_x / smbh_count;
+                render_cam.target_y = mid_y / smbh_count;
+                render_cam.target_z = mid_z / smbh_count;
+            }
+            // Start zoomed out for merger
+            if (merger && smbh_count > 1)
+                render_cam.distance = 60.0f;
+            renderer_update_smbh(&rcfg, bodies, current_n);
+        }
+
+        float smooth_smbh[MAX_SMBH][3] = {{0}};
+        int smooth_smbh_init = 0;
 
         printf("Rendering %d frames at %dx%d to %s/\n",
-               render_frames, render_width, render_height, render_dir);
+               render_frames,
+               render_width,
+               render_height,
+               render_dir);
         printf("Substeps per frame: %d, dt: %.4f, orbit speed: %.4f rad/frame\n",
-               substeps, dt, (double)orbit_speed);
+               substeps,
+               dt,
+               (double)orbit_speed);
 
         double t_start = glfwGetTime();
 
@@ -417,21 +475,98 @@ int main(int argc, char **argv)
                 }
             }
 
-            /* Camera orbit */
+            /* Camera: track SMBH(s) with dynamic distance */
             render_cam.azimuth += orbit_speed;
+
+            // Find all SMBHs and compute midpoint + separation
+            {
+                float smbh_pos[2][3] = {{0}};
+                int smbh_count = 0;
+                for (int i = 0; i < current_n && smbh_count < 2; i++) {
+                    if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+                        smbh_pos[smbh_count][0] = (float)bodies[i].x;
+                        smbh_pos[smbh_count][1] = (float)bodies[i].y;
+                        smbh_pos[smbh_count][2] = (float)bodies[i].z;
+                        smbh_count++;
+                    }
+                }
+
+                // Camera target: midpoint of all SMBHs
+                float mid_x = smbh_pos[0][0], mid_y = smbh_pos[0][1], mid_z = smbh_pos[0][2];
+                float smbh_sep = 0.0f;
+                if (smbh_count == 2) {
+                    mid_x = (smbh_pos[0][0] + smbh_pos[1][0]) * 0.5f;
+                    mid_y = (smbh_pos[0][1] + smbh_pos[1][1]) * 0.5f;
+                    mid_z = (smbh_pos[0][2] + smbh_pos[1][2]) * 0.5f;
+                    float dx = smbh_pos[1][0] - smbh_pos[0][0];
+                    float dy = smbh_pos[1][1] - smbh_pos[0][1];
+                    float dz = smbh_pos[1][2] - smbh_pos[0][2];
+                    smbh_sep = sqrtf(dx * dx + dy * dy + dz * dz);
+                }
+
+                // Smooth camera target
+                render_cam.target_x = 0.95f * render_cam.target_x + 0.05f * mid_x;
+                render_cam.target_y = 0.95f * render_cam.target_y + 0.05f * mid_y;
+                render_cam.target_z = 0.95f * render_cam.target_z + 0.05f * mid_z;
+
+                // Camera distance: based on SMBH separation + neighborhood size
+                // When far apart: zoom out to see both galaxies
+                // When merged: zoom in to accretion disk
+                float target_dist;
+                if (smbh_sep > 5.0f) {
+                    // Show both galaxies: distance = separation * 1.2 + some padding
+                    target_dist = smbh_sep * 1.2f + 15.0f;
+                } else {
+                    // Merged or close: zoom to accretion neighborhood
+                    target_dist = 20.0f;
+                }
+
+                // Clamp
+                if (target_dist < 8.0f)
+                    target_dist = 8.0f;
+                if (target_dist > 120.0f)
+                    target_dist = 120.0f;
+
+                // Smooth camera distance
+                render_cam.distance = 0.97f * render_cam.distance + 0.03f * target_dist;
+            }
 
             /* Render to FBO */
             if (quasar) {
                 renderer_update_smbh(&rcfg, bodies, current_n);
+                // Smooth all SMBH render positions to eliminate event horizon jitter
+                if (!smooth_smbh_init) {
+                    for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
+                        smooth_smbh[s][0] = rcfg.smbhs[s].x;
+                        smooth_smbh[s][1] = rcfg.smbhs[s].y;
+                        smooth_smbh[s][2] = rcfg.smbhs[s].z;
+                    }
+                    smooth_smbh_init = 1;
+                } else {
+                    for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
+                        smooth_smbh[s][0] = 0.9f * smooth_smbh[s][0] + 0.1f * rcfg.smbhs[s].x;
+                        smooth_smbh[s][1] = 0.9f * smooth_smbh[s][1] + 0.1f * rcfg.smbhs[s].y;
+                        smooth_smbh[s][2] = 0.9f * smooth_smbh[s][2] + 0.1f * rcfg.smbhs[s].z;
+                    }
+                }
+                for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
+                    rcfg.smbhs[s].x = smooth_smbh[s][0];
+                    rcfg.smbhs[s].y = smooth_smbh[s][1];
+                    rcfg.smbhs[s].z = smooth_smbh[s][2];
+                }
+                // Keep primary in sync
+                if (rcfg.smbh_count > 0) {
+                    rcfg.smbh_x = rcfg.smbhs[0].x;
+                    rcfg.smbh_y = rcfg.smbhs[0].y;
+                    rcfg.smbh_z = rcfg.smbhs[0].z;
+                }
             }
-            renderer_draw(bodies, current_n, &render_cam,
-                          render_width, render_height, &rcfg);
+            renderer_draw(bodies, current_n, &render_cam, render_width, render_height, &rcfg);
 
             /* If HDR pipeline wrote to default FB (composite pass), read from it.
                Otherwise the scene is in the default FB already. */
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glReadPixels(0, 0, render_width, render_height,
-                         GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+            glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
             /* Save frame */
             char path[1024];
@@ -444,19 +579,26 @@ int main(int argc, char **argv)
                 double fps = (frame + 1) / elapsed;
                 double eta = (render_frames - frame - 1) / fps;
                 printf("\r  frame %d/%d  (%.1f fps, ETA %.0fs)   ",
-                       frame + 1, render_frames, fps, eta);
+                       frame + 1,
+                       render_frames,
+                       fps,
+                       eta);
                 fflush(stdout);
             }
 
             glfwPollEvents();
-            if (glfwWindowShouldClose(window)) break;
+            if (glfwWindowShouldClose(window))
+                break;
         }
 
         double total = glfwGetTime() - t_start;
         printf("\nDone. %d frames in %.1fs (%.1f fps avg)\n",
-               render_frames, total, render_frames / total);
+               render_frames,
+               total,
+               render_frames / total);
         printf("Convert to video:\n  ffmpeg -framerate 60 -i %s/frame_%%06d.ppm "
-               "-c:v libx264 -pix_fmt yuv420p output.mp4\n", render_dir);
+               "-c:v libx264 -pix_fmt yuv420p output.mp4\n",
+               render_dir);
 
         free(pixels);
         glDeleteFramebuffers(1, &render_fbo);
@@ -500,8 +642,11 @@ int main(int argc, char **argv)
             double now = glfwGetTime();
             if (now - fps_time >= 1.0) {
                 char title[128];
-                snprintf(title, sizeof(title), "cosmosim | %d bodies | %.0f FPS%s",
-                         current_n, fps_frames / (now - fps_time),
+                snprintf(title,
+                         sizeof(title),
+                         "cosmosim | %d bodies | %.0f FPS%s",
+                         current_n,
+                         fps_frames / (now - fps_time),
                          paused ? " [PAUSED]" : "");
                 glfwSetWindowTitle(window, title);
                 fps_frames = 0;

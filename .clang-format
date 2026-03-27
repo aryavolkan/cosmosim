@@ -1,0 +1,39 @@
+# .clang-format
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Match existing cosmosim style
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+# Brace style: K&R (opening brace on same line)
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+
+# Pointer alignment: right (matches `Body *bodies` style in codebase)
+PointerAlignment: Right
+
+# Function declarations
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# Spaces
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: false
+SpacesInParentheses: false
+
+# Includes
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# Misc
+AlignConsecutiveMacros: true
+AlignEscapedNewlines: Left
+IndentCaseLabels: false

@@ -31,8 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: Install lint tools
+        run: sudo apt-get update && sudo apt-get install -y cppcheck clang-format
+
+      - name: Check C formatting
+        run: find src/ -name '*.c' -o -name '*.h' | xargs clang-format --dry-run --Werror
 
       - name: Run cppcheck on source files
         run: |
