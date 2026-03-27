@@ -1,4 +1,6 @@
 build/
 .DS_Store
 frames/
-output.mp4
+render_output/
+screenshots/
+*.mp4

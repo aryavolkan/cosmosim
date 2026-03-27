@@ -16,6 +16,7 @@ typedef struct {
     float x, y, z;
     float luminosity;
     float mass;
+    float spin_x, spin_y, spin_z; // normalized spin axis (for frame-dragging beaming)
 } SMBHInfo;
 
 typedef struct {

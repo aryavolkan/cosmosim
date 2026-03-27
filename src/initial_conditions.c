@@ -169,6 +169,79 @@ void generate_quasar_galaxy(Body *bodies,
     }
 }
 
+void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separation)
+{
+    rng_seed((uint64_t)time(NULL) + 99999ULL);
+
+    double disk_radius = separation * 0.15;
+    /* Approximate galaxy mass from the body count (matches generate_quasar_merger) */
+    double galaxy_mass = (double)(start_idx / 2) * 2.0;
+    double galaxy_mass2 = galaxy_mass * 0.7;
+    double disk_r2 = disk_radius * 0.8;
+
+    double cx1 = -separation * 0.5;
+    double cx2 =  separation * 0.5;
+
+    int n_tidal = n_dust / 3;
+    int n_halo1 = n_dust / 3;
+    int n_halo2 = n_dust - n_tidal - n_halo1;
+
+    /* Tidal bridge: elongated dust cloud connecting the two galaxy centers */
+    for (int i = 0; i < n_tidal; i++) {
+        int idx = start_idx + i;
+        double t = rng_uniform();
+        double bx = cx1 + t * (cx2 - cx1);
+        double by = rng_gaussian() * separation * 0.06;
+        bodies[idx].x = bx + rng_gaussian() * separation * 0.04;
+        bodies[idx].y = by;
+        bodies[idx].z = rng_gaussian() * separation * 0.015;
+        bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
+        bodies[idx].type = BODY_DUST;
+        /* Orbital velocity interpolated from each galaxy's rotation */
+        double r = sqrt(bx * bx + by * by);
+        if (r < 1e-10)
+            r = 1e-10;
+        double v_c = sqrt(galaxy_mass / r) * 0.25;
+        bodies[idx].vx = -v_c * by / r + rng_gaussian() * 0.4;
+        bodies[idx].vy =  v_c * bx / r + rng_gaussian() * 0.4;
+        bodies[idx].vz = rng_gaussian() * 0.2;
+    }
+
+    /* Outer disk halo: galaxy 1 (left) */
+    for (int i = 0; i < n_halo1; i++) {
+        int idx = start_idx + n_tidal + i;
+        double r = disk_radius * (0.7 + 0.9 * sqrt(rng_uniform()));
+        double theta = 2.0 * M_PI * rng_uniform();
+        bodies[idx].x = cx1 + r * cos(theta);
+        bodies[idx].y =        r * sin(theta);
+        bodies[idx].z = rng_gaussian() * disk_radius * 0.08;
+        bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
+        bodies[idx].type = BODY_DUST;
+        double v_c = sqrt(galaxy_mass / r) * 0.75;
+        double disp = v_c * 0.08;
+        bodies[idx].vx = -v_c * sin(theta) + rng_gaussian() * disp;
+        bodies[idx].vy =  v_c * cos(theta) + rng_gaussian() * disp;
+        bodies[idx].vz = rng_gaussian() * disp * 0.3;
+    }
+
+    /* Outer disk halo: galaxy 2 (right) */
+    for (int i = 0; i < n_halo2; i++) {
+        int idx = start_idx + n_tidal + n_halo1 + i;
+        double r = disk_r2 * (0.7 + 0.9 * sqrt(rng_uniform()));
+        double theta = 2.0 * M_PI * rng_uniform();
+        bodies[idx].x = cx2 + r * cos(theta);
+        bodies[idx].y =        r * sin(theta);
+        bodies[idx].z = rng_gaussian() * disk_r2 * 0.08;
+        bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
+        bodies[idx].type = BODY_DUST;
+        double v_c = sqrt(galaxy_mass2 / r) * 0.75;
+        double disp = v_c * 0.08;
+        bodies[idx].vx = -v_c * sin(theta) + rng_gaussian() * disp;
+        bodies[idx].vy =  v_c * cos(theta) + rng_gaussian() * disp;
+        bodies[idx].vz = rng_gaussian() * disp * 0.3;
+    }
+}
+
 void generate_quasar_merger(
     Body *bodies, int n, double separation, double approach_vel, double smbh_mass_frac)
 {

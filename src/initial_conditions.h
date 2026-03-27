@@ -28,4 +28,8 @@ void generate_quasar_galaxy(Body *bodies,
 void generate_quasar_merger(
     Body *bodies, int n, double separation, double approach_vel, double smbh_mass_frac);
 
+// Spawn interstellar dust particles (tidal streams + outer disk halos) after galaxy generation.
+// bodies[start_idx .. start_idx+n_dust-1] must be pre-allocated (calloc'd to zero).
+void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separation);
+
 #endif

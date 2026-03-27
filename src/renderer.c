@@ -14,6 +14,8 @@ static GLuint particle_program;
 static GLuint vao, vbo;
 static GLint u_view_loc, u_proj_loc;
 static GLint u_smbh_pos_loc, u_smbh_lum_loc;
+static GLint u_smbh_count_particle_loc, u_smbh_world_pos_loc;
+static GLint u_camera_pos_loc;
 static float *upload_buf = NULL;
 static int upload_buf_capacity = 0;
 
@@ -179,6 +181,9 @@ int renderer_init(const RendererConfig *rcfg)
     u_proj_loc = glGetUniformLocation(particle_program, "u_projection");
     u_smbh_pos_loc = glGetUniformLocation(particle_program, "u_smbh_pos");
     u_smbh_lum_loc = glGetUniformLocation(particle_program, "u_smbh_luminosity");
+    u_smbh_count_particle_loc = glGetUniformLocation(particle_program, "u_smbh_count");
+    u_smbh_world_pos_loc = glGetUniformLocation(particle_program, "u_smbh_world_pos");
+    u_camera_pos_loc = glGetUniformLocation(particle_program, "u_camera_pos");
 
     // VAO/VBO: pos(3) + mass(1) + vel(3) + type(1) = 8 floats
     glGenVertexArrays(1, &vao);
@@ -232,6 +237,9 @@ void renderer_update_smbh(RendererConfig *rcfg, const Body *bodies, int n)
             rcfg->smbhs[idx].z = (float)bodies[i].z;
             rcfg->smbhs[idx].luminosity = (float)bodies[i].luminosity;
             rcfg->smbhs[idx].mass = (float)bodies[i].mass;
+            rcfg->smbhs[idx].spin_x = (float)bodies[i].spin_x;
+            rcfg->smbhs[idx].spin_y = (float)bodies[i].spin_y;
+            rcfg->smbhs[idx].spin_z = (float)bodies[i].spin_z;
             rcfg->smbh_count++;
         }
     }
@@ -407,6 +415,23 @@ void renderer_draw(const Body *bodies,
     if (rcfg && u_smbh_lum_loc >= 0) {
         glUniform1f(u_smbh_lum_loc, rcfg->smbh_luminosity);
     }
+    // Camera world-space position for per-particle Doppler shift
+    if (u_camera_pos_loc >= 0)
+        glUniform3f(u_camera_pos_loc, eye_x, eye_y, eye_z);
+
+    // Pass all SMBH world positions for per-particle temperature (dust heating)
+    if (rcfg && u_smbh_count_particle_loc >= 0) {
+        float world_pos[MAX_SMBH * 3] = {0};
+        int cnt = rcfg->smbh_count < MAX_SMBH ? rcfg->smbh_count : MAX_SMBH;
+        for (int s = 0; s < cnt; s++) {
+            world_pos[s * 3 + 0] = rcfg->smbhs[s].x;
+            world_pos[s * 3 + 1] = rcfg->smbhs[s].y;
+            world_pos[s * 3 + 2] = rcfg->smbhs[s].z;
+        }
+        glUniform1i(u_smbh_count_particle_loc, cnt);
+        if (u_smbh_world_pos_loc >= 0)
+            glUniform3fv(u_smbh_world_pos_loc, MAX_SMBH, world_pos);
+    }
 
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -426,7 +451,7 @@ void renderer_draw(const Body *bodies,
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, hdr_color_tex);
         glUniform1i(glGetUniformLocation(bloom_extract_program, "u_scene"), 0);
-        glUniform1f(glGetUniformLocation(bloom_extract_program, "u_threshold"), 1.0f);
+        glUniform1f(glGetUniformLocation(bloom_extract_program, "u_threshold"), 0.5f);
         draw_fullscreen_quad();
 
         // Gaussian blur ping-pong
@@ -455,11 +480,13 @@ void renderer_draw(const Body *bodies,
             }
         }
 
-        // Compute screen positions and event horizon radii for all SMBHs
+        // Compute screen positions, event horizon radii, and spin projections for all SMBHs
         float smbh_screens[MAX_SMBH * 2] = {0}; // x,y pairs in NDC
         float smbh_eh_radii[MAX_SMBH] = {0};
         float smbh_masses[MAX_SMBH] = {0};
         float smbh_lensing[MAX_SMBH] = {0};
+        // 2D screen-space spin projections for frame-dragging beaming in composite shader
+        float smbh_spin_screen[MAX_SMBH * 2] = {0.0f, 1.0f, 0.0f, 1.0f};
         int num_smbh = rcfg->smbh_count;
         if (num_smbh > MAX_SMBH)
             num_smbh = MAX_SMBH;
@@ -492,7 +519,21 @@ void renderer_draw(const Body *bodies,
                     smbh_eh_radii[s] = 0.06f;
             }
             smbh_masses[s] = rcfg->smbhs[s].mass;
-            smbh_lensing[s] = rcfg->smbhs[s].mass * 0.0005f;
+            // 4× stronger lensing strength for dramatic background-star warping
+            smbh_lensing[s] = rcfg->smbhs[s].mass * 0.002f;
+
+            // Project spin axis through view rotation (top-left 3×3 of view matrix)
+            // This gives the 2D screen-space orientation of the accretion disk rotation
+            float spx = rcfg->smbhs[s].spin_x;
+            float spy = rcfg->smbhs[s].spin_y;
+            float spz = rcfg->smbhs[s].spin_z;
+            float vs_x = view[0]*spx + view[4]*spy + view[8]*spz;
+            float vs_y = view[1]*spx + view[5]*spy + view[9]*spz;
+            float vs_len = sqrtf(vs_x*vs_x + vs_y*vs_y);
+            if (vs_len > 1e-6f) { vs_x /= vs_len; vs_y /= vs_len; }
+            else { vs_x = 0.0f; vs_y = 1.0f; }
+            smbh_spin_screen[s * 2 + 0] = vs_x;
+            smbh_spin_screen[s * 2 + 1] = vs_y;
         }
 
         // Composite to screen
@@ -506,7 +547,7 @@ void renderer_draw(const Body *bodies,
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, bloom_tex[0]);
         glUniform1i(glGetUniformLocation(composite_program, "u_bloom"), 1);
-        glUniform1f(glGetUniformLocation(composite_program, "u_bloom_intensity"), 0.5f);
+        glUniform1f(glGetUniformLocation(composite_program, "u_bloom_intensity"), 0.9f);
         glUniform1f(glGetUniformLocation(composite_program, "u_exposure"), rcfg->exposure);
         glUniform1i(glGetUniformLocation(composite_program, "u_smbh_count"), num_smbh);
         glUniform2fv(
@@ -517,6 +558,8 @@ void renderer_draw(const Body *bodies,
         glUniform1fv(
             glGetUniformLocation(composite_program, "u_eh_radius"), MAX_SMBH, smbh_eh_radii);
         glUniform1f(glGetUniformLocation(composite_program, "u_aspect"), aspect);
+        glUniform2fv(glGetUniformLocation(composite_program, "u_smbh_spin"),
+                     MAX_SMBH, smbh_spin_screen);
         draw_fullscreen_quad();
     } else if (hdr_active) {
         // Fallback blit

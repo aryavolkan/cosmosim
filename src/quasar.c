@@ -211,6 +211,23 @@ static void apply_feedback(Body *bodies, int n, const QuasarConfig *cfg)
 
 static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
 {
+    /* Jet instability phase counter — drives sinusoidal knot modulation */
+    static int knot_phase = 0;
+    knot_phase++;
+
+    /* Kelvin-Helmholtz / kink instability: periodically vary jet speed and cone
+       angle to create visible knot clusters and helical structure in the beams. */
+    double phase_rad   = knot_phase * 0.10;
+    double phase_rad2  = knot_phase * 0.057;
+    /* Speed modulation: 0.5× to 1.7× baseline — fast knots interleaved with gaps */
+    double speed_mod   = 1.0 + 0.6 * sin(phase_rad);
+    if (speed_mod < 0.5) speed_mod = 0.5;
+    /* Cone modulation: narrow to wide, offset in phase to create helical appearance */
+    double cone_angle  = 0.05 + 0.13 * (0.5 + 0.5 * sin(phase_rad2));
+
+    /* Helix phase for lateral knot offset along the jet axis */
+    double helix_phase = knot_phase * 0.04;
+
     for (int s = 0; s < *n; s++) {
         if (bodies[s].type != BODY_SMBH || bodies[s].luminosity <= 0.0)
             continue;
@@ -225,49 +242,86 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
         if (n_spawn > 8)
             n_spawn = 8;
 
-        for (int j = 0; j < n_spawn && cfg->jet_count < cfg->jet_cap; j++) {
+        /* Build a pair of perpendicular vectors to the jet axis for helical offsets */
+        double perp_x, perp_y, perp_z;
+        if (fabs(smbh->spin_z) < 0.9) {
+            perp_x = -smbh->spin_y;
+            perp_y =  smbh->spin_x;
+            perp_z = 0.0;
+        } else {
+            perp_x = 0.0;
+            perp_y = -smbh->spin_z;
+            perp_z =  smbh->spin_y;
+        }
+        double pmag = sqrt(perp_x * perp_x + perp_y * perp_y + perp_z * perp_z);
+        if (pmag > 1e-15) {
+            perp_x /= pmag;
+            perp_y /= pmag;
+            perp_z /= pmag;
+        }
+
+        /* Second perpendicular: spin_axis × perp (for helical rotation) */
+        double perp2_x = smbh->spin_y * perp_z - smbh->spin_z * perp_y;
+        double perp2_y = smbh->spin_z * perp_x - smbh->spin_x * perp_z;
+        double perp2_z = smbh->spin_x * perp_y - smbh->spin_y * perp_x;
+        double pmag2 = sqrt(perp2_x*perp2_x + perp2_y*perp2_y + perp2_z*perp2_z);
+        if (pmag2 > 1e-15) {
+            perp2_x /= pmag2;
+            perp2_y /= pmag2;
+            perp2_z /= pmag2;
+        }
+
+        /* Helical knot offset amplitude — modest so jets still look collimated */
+        double helix_amp = cfg->swallow_radius * 0.35;
+        double hx = helix_amp * (cos(helix_phase) * perp_x + sin(helix_phase) * perp2_x);
+        double hy = helix_amp * (cos(helix_phase) * perp_y + sin(helix_phase) * perp2_y);
+        double hz = helix_amp * (cos(helix_phase) * perp_z + sin(helix_phase) * perp2_z);
+
+        double actual_speed = cfg->jet_speed * speed_mod;
+
+        /* During a speed peak, eject a tight high-mass blob cluster.
+           These appear as bright discrete condensations moving along the jet axis
+           (analogous to HST knots in M87, 3C 273, etc.). */
+        int burst_extra = (speed_mod > 1.35) ? 4 : 0;
+        int total_spawn = n_spawn + burst_extra;
+
+        for (int j = 0; j < total_spawn && cfg->jet_count < cfg->jet_cap; j++) {
             if (*n >= n_alloc)
                 break;
 
+            int is_burst = (j >= n_spawn);
             double sign = (j % 2 == 0) ? 1.0 : -1.0;
 
-            double cone_angle = 0.1;
-            double perp_x, perp_y, perp_z;
-            if (fabs(smbh->spin_z) < 0.9) {
-                perp_x = -smbh->spin_y;
-                perp_y = smbh->spin_x;
-                perp_z = 0.0;
-            } else {
-                perp_x = 0.0;
-                perp_y = -smbh->spin_z;
-                perp_z = smbh->spin_y;
-            }
-            double pmag = sqrt(perp_x * perp_x + perp_y * perp_y + perp_z * perp_z);
-            if (pmag > 1e-15) {
-                perp_x /= pmag;
-                perp_y /= pmag;
-                perp_z /= pmag;
-            }
+            /* Burst blobs: tight cone, higher speed, heavier mass, longer lifetime */
+            double this_cone  = is_burst ? 0.012 : cone_angle;
+            double this_speed = is_burst ? actual_speed * 1.28 : actual_speed;
+            double this_mass  = is_burst ? cfg->jet_mass * 1.9 : cfg->jet_mass;
+            double this_life  = is_burst ? cfg->jet_lifetime * 1.4 : cfg->jet_lifetime;
+            /* Burst particles spawn slightly ahead along the jet axis */
+            double axial_fwd  = is_burst ? cfg->swallow_radius * 0.6 : 0.0;
 
-            double angle = qrng_uniform() * 2.0 * M_PI;
-            double offset = qrng_gaussian() * cone_angle;
+            double angle  = qrng_uniform() * 2.0 * M_PI;
+            double offset = qrng_gaussian() * this_cone;
 
             Body *jet = &bodies[*n];
             memset(jet, 0, sizeof(Body));
-            jet->type = BODY_JET;
-            jet->mass = cfg->jet_mass;
-            jet->lifetime = cfg->jet_lifetime;
+            jet->type     = BODY_JET;
+            jet->mass     = this_mass;
+            jet->lifetime = this_life;
 
-            jet->x = smbh->x + sign * smbh->spin_x * cfg->swallow_radius +
-                     offset * (perp_x * cos(angle));
-            jet->y = smbh->y + sign * smbh->spin_y * cfg->swallow_radius +
-                     offset * (perp_y * cos(angle));
-            jet->z = smbh->z + sign * smbh->spin_z * cfg->swallow_radius +
-                     offset * (perp_z * sin(angle));
+            jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd)
+                     + offset * (perp_x * cos(angle))
+                     + sign * hx;
+            jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd)
+                     + offset * (perp_y * cos(angle))
+                     + sign * hy;
+            jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd)
+                     + offset * (perp_z * sin(angle))
+                     + sign * hz;
 
-            jet->vx = smbh->vx + sign * smbh->spin_x * cfg->jet_speed;
-            jet->vy = smbh->vy + sign * smbh->spin_y * cfg->jet_speed;
-            jet->vz = smbh->vz + sign * smbh->spin_z * cfg->jet_speed;
+            jet->vx = smbh->vx + sign * smbh->spin_x * this_speed;
+            jet->vy = smbh->vy + sign * smbh->spin_y * this_speed;
+            jet->vz = smbh->vz + sign * smbh->spin_z * this_speed;
 
             (*n)++;
             cfg->jet_count++;

@@ -226,6 +226,7 @@ int main(int argc, char **argv)
             n = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--merger") == 0) {
             merger = 1;
+            quasar = 1;  /* -m implies -q: HDR pipeline, SMBHs, and lensing */
         } else if (strcmp(argv[i], "-q") == 0 || strcmp(argv[i], "--quasar") == 0) {
             quasar = 1;
         } else if (strcmp(argv[i], "--high-fidelity") == 0) {
@@ -363,8 +364,10 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Allocate bodies with headroom for jet particles
-    int n_alloc = quasar ? n + n / 4 : n;
+    // Dust particles for merger mode: tidal streams + outer disk halos
+    int n_dust = (merger && quasar) ? n / 5 : 0;
+    // Allocate headroom for: dust particles + jet particles
+    int n_alloc = quasar ? n + n_dust + n / 4 : n;
     Body *bodies = calloc(n_alloc, sizeof(Body));
     OctreeNode *pool = malloc(8 * n_alloc * sizeof(OctreeNode));
 
@@ -377,6 +380,8 @@ int main(int argc, char **argv)
     if (quasar) {
         if (merger) {
             generate_quasar_merger(bodies, n, 60.0, 0.3, smbh_mass_frac);
+            if (n_dust > 0)
+                generate_merger_dust(bodies, n, n_dust, 60.0);
         } else {
             generate_quasar_galaxy(
                 bodies, n, 0.0, 0.0, (double)n * 2.0, 30.0, 0.0, 0.0, smbh_mass_frac);
@@ -389,8 +394,9 @@ int main(int argc, char **argv)
         }
     }
 
-    // Compute initial accelerations
-    integrator_init_accelerations(bodies, n, G, SOFTENING, theta, pool);
+    // Compute initial accelerations (include dust particles in the gravity computation)
+    int initial_n = n + n_dust;
+    integrator_init_accelerations(bodies, initial_n, G, SOFTENING, theta, pool);
 
     QuasarConfig qcfg = quasar_default_config();
     if (quasar) {
@@ -400,7 +406,7 @@ int main(int argc, char **argv)
         qcfg.jet_cap = high_fidelity ? n / 4 : n / 10;
         qcfg.max_bodies = n_alloc;
     }
-    int current_n = n;
+    int current_n = initial_n;
     int compact_counter = 0;
     int compact_interval = high_fidelity ? 60 : 120;
 
