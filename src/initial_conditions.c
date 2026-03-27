@@ -273,6 +273,11 @@ void generate_quasar_merger(
     generate_quasar_galaxy(
         bodies, n1, -separation * 0.5, 0.0, galaxy_mass, disk_radius, vx1, vy1, smbh_mass_frac);
 
+    // Galaxy 1 SMBH spin: aligned with disk normal (+z, tilted into view)
+    bodies[0].spin_x = 0.0;
+    bodies[0].spin_y = 0.7071;
+    bodies[0].spin_z = 0.7071;
+
     // Galaxy 2: re-seed RNG for different structure
     rng_seed((uint64_t)time(NULL) + 12345);
     generate_quasar_galaxy(bodies + n1,
@@ -284,4 +289,36 @@ void generate_quasar_merger(
                            vx2,
                            vy2,
                            smbh_mass_frac);
+
+    // Tilt Galaxy 2's disk ~50° around the X-axis relative to Galaxy 1.
+    // This creates the inclined encounter geometry seen in MW-Andromeda.
+    // Rotation matrix Rx(50°): y' = y*cos - z*sin, z' = y*sin + z*cos
+    {
+        double tilt = 50.0 * M_PI / 180.0;
+        double ct = cos(tilt), st = sin(tilt);
+        double cx2 = separation * 0.5;
+
+        for (int i = n1; i < n1 + n2; i++) {
+            // Translate to galaxy center, rotate, translate back
+            double y0 = bodies[i].y;
+            double z0 = bodies[i].z;
+            bodies[i].y = y0 * ct - z0 * st;
+            bodies[i].z = y0 * st + z0 * ct;
+
+            // Rotate velocities
+            double vy0 = bodies[i].vy;
+            double vz0 = bodies[i].vz;
+            bodies[i].vy = vy0 * ct - vz0 * st;
+            bodies[i].vz = vy0 * st + vz0 * ct;
+        }
+
+        // Galaxy 2 SMBH spin: tilted disk normal
+        // Original disk normal is (0, 0.7071, 0.7071), rotate by same tilt
+        double sy = 0.7071 * ct - 0.7071 * st;
+        double sz = 0.7071 * st + 0.7071 * ct;
+        double smag = sqrt(sy * sy + sz * sz);
+        bodies[n1].spin_x = 0.0;
+        bodies[n1].spin_y = sy / smag;
+        bodies[n1].spin_z = sz / smag;
+    }
 }
