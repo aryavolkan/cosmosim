@@ -395,6 +395,14 @@ int main(int argc, char **argv)
 
         Camera render_cam = {0.8f, 0.4f, 20.0f, 0.0f, 0.0f, 0.0f};
 
+        // Initialize camera target to SMBH position
+        if (quasar) {
+            renderer_update_smbh(&rcfg, bodies, current_n);
+            render_cam.target_x = rcfg.smbh_x;
+            render_cam.target_y = rcfg.smbh_y;
+            render_cam.target_z = rcfg.smbh_z;
+        }
+
         printf("Rendering %d frames at %dx%d to %s/\n",
                render_frames, render_width, render_height, render_dir);
         printf("Substeps per frame: %d, dt: %.4f, orbit speed: %.4f rad/frame\n",
@@ -421,10 +429,10 @@ int main(int argc, char **argv)
             /* Camera: track SMBH with dynamic distance */
             render_cam.azimuth += orbit_speed;
 
-            // Track SMBH position
-            render_cam.target_x = rcfg.smbh_x;
-            render_cam.target_y = rcfg.smbh_y;
-            render_cam.target_z = rcfg.smbh_z;
+            // Track SMBH position with smoothing to avoid jitter
+            render_cam.target_x = 0.95f * render_cam.target_x + 0.05f * rcfg.smbh_x;
+            render_cam.target_y = 0.95f * render_cam.target_y + 0.05f * rcfg.smbh_y;
+            render_cam.target_z = 0.95f * render_cam.target_z + 0.05f * rcfg.smbh_z;
 
             // Compute neighborhood radius (80th percentile of particles near SMBH)
             {
