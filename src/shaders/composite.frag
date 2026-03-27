@@ -27,8 +27,13 @@ void main()
         float dist = length(delta);
 
         if (dist > 0.001 && u_lensing_strength[s] > 0.0) {
-            float deflection = u_lensing_strength[s] / (dist * dist + 0.0005);
-            deflection = min(deflection, 0.15);
+            // Einstein ring deflection: falls off as 1/dist, localized near the SMBH
+            // Scale strength relative to event horizon size for proper locality
+            float r_eh = u_eh_radius[s];
+            float scale = max(r_eh * 3.0, 0.01);
+            float deflection = u_lensing_strength[s] * scale / (dist * dist + scale * scale);
+            deflection *= exp(-dist * dist / (scale * scale * 25.0)); // Gaussian falloff
+            deflection = min(deflection, 0.08);
             vec2 dir = normalize(delta);
             dir.x /= u_aspect;
             scene_uv += dir * deflection;
