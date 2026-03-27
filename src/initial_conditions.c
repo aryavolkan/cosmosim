@@ -154,19 +154,35 @@ void generate_quasar_merger(Body *bodies, int n, double separation,
 
     double disk_radius = separation * 0.15;
     double galaxy_mass = (double)n1 * 2.0;
+    double total_mass = galaxy_mass + galaxy_mass * 0.7;
 
-    // Galaxy 1: left, moving right
+    // Compute orbital velocity for a bound elliptical encounter.
+    // v_circ = sqrt(G * M_total / r) gives circular orbit speed.
+    // Use 0.6 * v_circ for an eccentric (plunging) orbit that still
+    // has enough angular momentum for a proper first pass + tidal tails.
+    double v_circ = sqrt(total_mass / separation);
+    double v_orbit = v_circ * 0.6;
+
+    // Galaxy 1: left, moving up (tangential)
+    // Small radial component for slight infall, large tangential for orbit
+    double vx1 = approach_vel;           // mild radial approach
+    double vy1 = v_orbit;               // strong tangential motion
+
+    // Galaxy 2: right, moving down (opposite tangential)
+    double vx2 = -approach_vel;
+    double vy2 = -v_orbit * 0.7;        // slightly less (mass ratio asymmetry)
+
     generate_quasar_galaxy(bodies, n1,
                            -separation * 0.5, 0.0,
                            galaxy_mass, disk_radius,
-                           approach_vel, approach_vel * 0.3,
+                           vx1, vy1,
                            smbh_mass_frac);
 
-    // Galaxy 2: right, moving left (re-seed RNG for different structure)
+    // Galaxy 2: re-seed RNG for different structure
     rng_seed((uint64_t)time(NULL) + 12345);
     generate_quasar_galaxy(bodies + n1, n2,
                            separation * 0.5, 0.0,
                            galaxy_mass * 0.7, disk_radius * 0.8,
-                           -approach_vel, -approach_vel * 0.3,
+                           vx2, vy2,
                            smbh_mass_frac);
 }
