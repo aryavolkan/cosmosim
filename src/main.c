@@ -417,6 +417,10 @@ int main(int argc, char **argv)
             renderer_update_smbh(&rcfg, bodies, current_n);
         }
 
+        float smooth_smbh_x = render_cam.target_x;
+        float smooth_smbh_y = render_cam.target_y;
+        float smooth_smbh_z = render_cam.target_z;
+
         printf("Rendering %d frames at %dx%d to %s/\n",
                render_frames, render_width, render_height, render_dir);
         printf("Substeps per frame: %d, dt: %.4f, orbit speed: %.4f rad/frame\n",
@@ -497,6 +501,19 @@ int main(int argc, char **argv)
             /* Render to FBO */
             if (quasar) {
                 renderer_update_smbh(&rcfg, bodies, current_n);
+                // Smooth SMBH render position to eliminate event horizon jitter
+                if (frame == 0) {
+                    smooth_smbh_x = rcfg.smbh_x;
+                    smooth_smbh_y = rcfg.smbh_y;
+                    smooth_smbh_z = rcfg.smbh_z;
+                } else {
+                    smooth_smbh_x = 0.9f * smooth_smbh_x + 0.1f * rcfg.smbh_x;
+                    smooth_smbh_y = 0.9f * smooth_smbh_y + 0.1f * rcfg.smbh_y;
+                    smooth_smbh_z = 0.9f * smooth_smbh_z + 0.1f * rcfg.smbh_z;
+                }
+                rcfg.smbh_x = smooth_smbh_x;
+                rcfg.smbh_y = smooth_smbh_y;
+                rcfg.smbh_z = smooth_smbh_z;
             }
             renderer_draw(bodies, current_n, &render_cam,
                           render_width, render_height, &rcfg);
