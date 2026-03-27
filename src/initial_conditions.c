@@ -180,7 +180,7 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
     double disk_r2 = disk_radius * 0.8;
 
     double cx1 = -separation * 0.5;
-    double cx2 =  separation * 0.5;
+    double cx2 = separation * 0.5;
 
     int n_tidal = n_dust / 3;
     int n_halo1 = n_dust / 3;
@@ -203,7 +203,7 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
             r = 1e-10;
         double v_c = sqrt(galaxy_mass / r) * 0.25;
         bodies[idx].vx = -v_c * by / r + rng_gaussian() * 0.4;
-        bodies[idx].vy =  v_c * bx / r + rng_gaussian() * 0.4;
+        bodies[idx].vy = v_c * bx / r + rng_gaussian() * 0.4;
         bodies[idx].vz = rng_gaussian() * 0.2;
     }
 
@@ -213,14 +213,14 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
         double r = disk_radius * (0.7 + 0.9 * sqrt(rng_uniform()));
         double theta = 2.0 * M_PI * rng_uniform();
         bodies[idx].x = cx1 + r * cos(theta);
-        bodies[idx].y =        r * sin(theta);
+        bodies[idx].y = r * sin(theta);
         bodies[idx].z = rng_gaussian() * disk_radius * 0.08;
         bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
         bodies[idx].type = BODY_DUST;
         double v_c = sqrt(galaxy_mass / r) * 0.75;
         double disp = v_c * 0.08;
         bodies[idx].vx = -v_c * sin(theta) + rng_gaussian() * disp;
-        bodies[idx].vy =  v_c * cos(theta) + rng_gaussian() * disp;
+        bodies[idx].vy = v_c * cos(theta) + rng_gaussian() * disp;
         bodies[idx].vz = rng_gaussian() * disp * 0.3;
     }
 
@@ -230,14 +230,14 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
         double r = disk_r2 * (0.7 + 0.9 * sqrt(rng_uniform()));
         double theta = 2.0 * M_PI * rng_uniform();
         bodies[idx].x = cx2 + r * cos(theta);
-        bodies[idx].y =        r * sin(theta);
+        bodies[idx].y = r * sin(theta);
         bodies[idx].z = rng_gaussian() * disk_r2 * 0.08;
         bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
         bodies[idx].type = BODY_DUST;
         double v_c = sqrt(galaxy_mass2 / r) * 0.75;
         double disp = v_c * 0.08;
         bodies[idx].vx = -v_c * sin(theta) + rng_gaussian() * disp;
-        bodies[idx].vy =  v_c * cos(theta) + rng_gaussian() * disp;
+        bodies[idx].vy = v_c * cos(theta) + rng_gaussian() * disp;
         bodies[idx].vz = rng_gaussian() * disp * 0.3;
     }
 }

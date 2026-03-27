@@ -1,7 +1,14 @@
 #ifndef BODY_H
 #define BODY_H
 
-typedef enum { BODY_STAR = 0, BODY_GAS = 1, BODY_SMBH = 2, BODY_JET = 3, BODY_DUST = 4, BODY_LOBE = 5 } BodyType;
+typedef enum {
+    BODY_STAR = 0,
+    BODY_GAS = 1,
+    BODY_SMBH = 2,
+    BODY_JET = 3,
+    BODY_DUST = 4,
+    BODY_LOBE = 5
+} BodyType;
 
 typedef struct {
     double x, y, z;

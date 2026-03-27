@@ -218,13 +218,14 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
 
     /* Kelvin-Helmholtz / kink instability: periodically vary jet speed and cone
        angle to create visible knot clusters and helical structure in the beams. */
-    double phase_rad   = knot_phase * 0.10;
-    double phase_rad2  = knot_phase * 0.057;
+    double phase_rad = knot_phase * 0.10;
+    double phase_rad2 = knot_phase * 0.057;
     /* Speed modulation: 0.5× to 1.7× baseline — fast knots interleaved with gaps */
-    double speed_mod   = 1.0 + 0.6 * sin(phase_rad);
-    if (speed_mod < 0.5) speed_mod = 0.5;
+    double speed_mod = 1.0 + 0.6 * sin(phase_rad);
+    if (speed_mod < 0.5)
+        speed_mod = 0.5;
     /* Cone modulation: narrow to wide, offset in phase to create helical appearance */
-    double cone_angle  = 0.05 + 0.13 * (0.5 + 0.5 * sin(phase_rad2));
+    double cone_angle = 0.05 + 0.13 * (0.5 + 0.5 * sin(phase_rad2));
 
     /* Helix phase for lateral knot offset along the jet axis */
     double helix_phase = knot_phase * 0.04;
@@ -247,12 +248,12 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
         double perp_x, perp_y, perp_z;
         if (fabs(smbh->spin_z) < 0.9) {
             perp_x = -smbh->spin_y;
-            perp_y =  smbh->spin_x;
+            perp_y = smbh->spin_x;
             perp_z = 0.0;
         } else {
             perp_x = 0.0;
             perp_y = -smbh->spin_z;
-            perp_z =  smbh->spin_y;
+            perp_z = smbh->spin_y;
         }
         double pmag = sqrt(perp_x * perp_x + perp_y * perp_y + perp_z * perp_z);
         if (pmag > 1e-15) {
@@ -265,7 +266,7 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
         double perp2_x = smbh->spin_y * perp_z - smbh->spin_z * perp_y;
         double perp2_y = smbh->spin_z * perp_x - smbh->spin_x * perp_z;
         double perp2_z = smbh->spin_x * perp_y - smbh->spin_y * perp_x;
-        double pmag2 = sqrt(perp2_x*perp2_x + perp2_y*perp2_y + perp2_z*perp2_z);
+        double pmag2 = sqrt(perp2_x * perp2_x + perp2_y * perp2_y + perp2_z * perp2_z);
         if (pmag2 > 1e-15) {
             perp2_x /= pmag2;
             perp2_y /= pmag2;
@@ -294,14 +295,14 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
             double sign = (j % 2 == 0) ? 1.0 : -1.0;
 
             /* Burst blobs: tight cone, higher speed, heavier mass, longer lifetime */
-            double this_cone  = is_burst ? 0.012 : cone_angle;
+            double this_cone = is_burst ? 0.012 : cone_angle;
             double this_speed = is_burst ? actual_speed * 1.28 : actual_speed;
-            double this_mass  = is_burst ? cfg->jet_mass * 1.9 : cfg->jet_mass;
-            double this_life  = is_burst ? cfg->jet_lifetime * 1.4 : cfg->jet_lifetime;
+            double this_mass = is_burst ? cfg->jet_mass * 1.9 : cfg->jet_mass;
+            double this_life = is_burst ? cfg->jet_lifetime * 1.4 : cfg->jet_lifetime;
             /* Burst particles spawn slightly ahead along the jet axis */
-            double axial_fwd  = is_burst ? cfg->swallow_radius * 0.6 : 0.0;
+            double axial_fwd = is_burst ? cfg->swallow_radius * 0.6 : 0.0;
 
-            double angle  = qrng_uniform() * 2.0 * M_PI;
+            double angle = qrng_uniform() * 2.0 * M_PI;
             double offset = qrng_gaussian() * this_cone;
 
             /* Spawn a ring of particles for limb brightening.
@@ -309,22 +310,20 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
                creates a bright-edge, dim-center morphology when rendered
                with additive blending. */
             int ring_n = cfg->jet_ring_count;
-            if (is_burst) ring_n = 1; /* bursts are single bright knots */
+            if (is_burst)
+                ring_n = 1; /* bursts are single bright knots */
 
             for (int r = 0; r < ring_n; r++) {
-                if (*n >= n_alloc || cfg->jet_count >= cfg->jet_cap) break;
+                if (*n >= n_alloc || cfg->jet_count >= cfg->jet_cap)
+                    break;
 
                 Body *jet = &bodies[*n];
                 memset(jet, 0, sizeof(Body));
-                jet->type     = BODY_JET;
+                jet->type = BODY_JET;
                 jet->lifetime = this_life;
 
-                double ring_angle = (ring_n > 1)
-                    ? 2.0 * M_PI * r / ring_n + angle
-                    : angle;
-                double ring_r = (ring_n > 1)
-                    ? cfg->swallow_radius * 0.15
-                    : 0.0;
+                double ring_angle = (ring_n > 1) ? 2.0 * M_PI * r / ring_n + angle : angle;
+                double ring_r = (ring_n > 1) ? cfg->swallow_radius * 0.15 : 0.0;
 
                 /* Ring offset perpendicular to jet axis */
                 double rx = ring_r * (cos(ring_angle) * perp_x + sin(ring_angle) * perp2_x);
@@ -335,24 +334,21 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
                    additive blending of the ring overlapping at edges in projection) */
                 jet->mass = (ring_n > 1) ? this_mass * 0.6 : this_mass;
 
-                jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd)
-                         + offset * (perp_x * cos(angle))
-                         + sign * hx + rx;
-                jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd)
-                         + offset * (perp_y * cos(angle))
-                         + sign * hy + ry;
-                jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd)
-                         + offset * (perp_z * sin(angle))
-                         + sign * hz + rz;
+                jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd) +
+                         offset * (perp_x * cos(angle)) + sign * hx + rx;
+                jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd) +
+                         offset * (perp_y * cos(angle)) + sign * hy + ry;
+                jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd) +
+                         offset * (perp_z * sin(angle)) + sign * hz + rz;
 
                 /* Slight outward velocity for progressive opening angle */
                 double expand_v = this_speed * 0.04 * (1.0 + jet->lifetime * 0.1);
-                jet->vx = smbh->vx + sign * smbh->spin_x * this_speed
-                          + rx * expand_v / (ring_r + 1e-15);
-                jet->vy = smbh->vy + sign * smbh->spin_y * this_speed
-                          + ry * expand_v / (ring_r + 1e-15);
-                jet->vz = smbh->vz + sign * smbh->spin_z * this_speed
-                          + rz * expand_v / (ring_r + 1e-15);
+                jet->vx =
+                    smbh->vx + sign * smbh->spin_x * this_speed + rx * expand_v / (ring_r + 1e-15);
+                jet->vy =
+                    smbh->vy + sign * smbh->spin_y * this_speed + ry * expand_v / (ring_r + 1e-15);
+                jet->vz =
+                    smbh->vz + sign * smbh->spin_z * this_speed + rz * expand_v / (ring_r + 1e-15);
 
                 (*n)++;
                 cfg->jet_count++;

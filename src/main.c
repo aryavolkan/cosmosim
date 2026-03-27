@@ -226,7 +226,7 @@ int main(int argc, char **argv)
             n = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--merger") == 0) {
             merger = 1;
-            quasar = 1;  /* -m implies -q: HDR pipeline, SMBHs, and lensing */
+            quasar = 1; /* -m implies -q: HDR pipeline, SMBHs, and lensing */
         } else if (strcmp(argv[i], "-q") == 0 || strcmp(argv[i], "--quasar") == 0) {
             quasar = 1;
         } else if (strcmp(argv[i], "--high-fidelity") == 0) {
