@@ -393,7 +393,7 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        Camera render_cam = {0.8f, 0.4f, 80.0f, 0.0f, 0.0f, 0.0f};
+        Camera render_cam = {0.8f, 0.4f, 20.0f, 0.0f, 0.0f, 0.0f};
 
         printf("Rendering %d frames at %dx%d to %s/\n",
                render_frames, render_width, render_height, render_dir);
@@ -418,8 +418,62 @@ int main(int argc, char **argv)
                 }
             }
 
-            /* Camera orbit */
+            /* Camera: track SMBH with dynamic distance */
             render_cam.azimuth += orbit_speed;
+
+            // Track SMBH position
+            render_cam.target_x = rcfg.smbh_x;
+            render_cam.target_y = rcfg.smbh_y;
+            render_cam.target_z = rcfg.smbh_z;
+
+            // Compute neighborhood radius (80th percentile of particles near SMBH)
+            {
+                double smbh_x = (double)rcfg.smbh_x;
+                double smbh_y = (double)rcfg.smbh_y;
+                double smbh_z = (double)rcfg.smbh_z;
+                double neighborhood = qcfg.accretion_radius * 5.0;
+                double neighborhood_sq = neighborhood * neighborhood;
+
+                // Collect distances of nearby particles
+                int nearby_count = 0;
+                float *dists = malloc(current_n * sizeof(float));
+                for (int i = 0; i < current_n; i++) {
+                    if (bodies[i].mass <= 0.0) continue;
+                    double dx = bodies[i].x - smbh_x;
+                    double dy = bodies[i].y - smbh_y;
+                    double dz = bodies[i].z - smbh_z;
+                    double d_sq = dx * dx + dy * dy + dz * dz;
+                    if (d_sq <= neighborhood_sq) {
+                        dists[nearby_count++] = (float)sqrt(d_sq);
+                    }
+                }
+
+                // Find 80th percentile via selection
+                float target_dist = 20.0f;
+                if (nearby_count > 0) {
+                    // Simple sort for percentile (N is small after neighborhood filter)
+                    for (int i = 0; i < nearby_count - 1; i++) {
+                        for (int j = i + 1; j < nearby_count; j++) {
+                            if (dists[j] < dists[i]) {
+                                float tmp = dists[i];
+                                dists[i] = dists[j];
+                                dists[j] = tmp;
+                            }
+                        }
+                    }
+                    int p80_idx = (int)(nearby_count * 0.8);
+                    if (p80_idx >= nearby_count) p80_idx = nearby_count - 1;
+                    target_dist = dists[p80_idx] * 2.5f;
+                }
+                free(dists);
+
+                // Clamp target distance
+                if (target_dist < 8.0f) target_dist = 8.0f;
+                if (target_dist > 40.0f) target_dist = 40.0f;
+
+                // Smooth camera distance
+                render_cam.distance = 0.95f * render_cam.distance + 0.05f * target_dist;
+            }
 
             /* Render to FBO */
             if (quasar) {
