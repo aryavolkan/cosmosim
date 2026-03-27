@@ -431,6 +431,17 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
             smbh_ndc_y = (smbh_clip_y / smbh_clip_w) * 0.5f + 0.5f;
         }
 
+        // Compute event horizon angular radius in NDC
+        // Schwarzschild radius ~ 2GM/c^2, we use r_s = mass * 0.002 in sim units
+        float smbh_depth = -mv[2]; // camera-space depth (positive = in front)
+        float r_schwarzschild = rcfg->smbh_mass * 0.0005f;
+        float eh_ndc_radius = 0.0f;
+        if (smbh_depth > 0.1f) {
+            // Project radius to NDC using perspective: ndc_r = world_r * proj[0] / depth
+            eh_ndc_radius = r_schwarzschild * proj[0] / smbh_depth * 0.5f;
+            if (eh_ndc_radius > 0.06f) eh_ndc_radius = 0.06f;
+        }
+
         // Composite to screen
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, window_width, window_height);
@@ -450,7 +461,11 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
         glUniform1f(glGetUniformLocation(composite_program, "u_smbh_mass"),
                     rcfg->smbh_mass);
         glUniform1f(glGetUniformLocation(composite_program, "u_lensing_strength"),
-                    rcfg->smbh_mass * 0.0001f);
+                    rcfg->smbh_mass * 0.001f);
+        glUniform1f(glGetUniformLocation(composite_program, "u_eh_radius"),
+                    eh_ndc_radius);
+        glUniform1f(glGetUniformLocation(composite_program, "u_aspect"),
+                    aspect);
         draw_fullscreen_quad();
     } else if (hdr_active) {
         // Fallback blit

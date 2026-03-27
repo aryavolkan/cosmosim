@@ -21,9 +21,9 @@ void main()
     vec3 color;
 
     if (body_type == 2) {
-        // SMBH: bright white core
-        color = vec3(2.0, 2.0, 2.5);
-        intensity = exp(-r_sq * 8.0);
+        // SMBH: dim point — event horizon + photon ring rendered in composite pass
+        color = vec3(0.3, 0.3, 0.4);
+        intensity = exp(-r_sq * 20.0) * 0.3;
     } else if (body_type == 3) {
         // JET: blue-white with cyan edges
         float core = exp(-r_sq * 24.0);
