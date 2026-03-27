@@ -158,12 +158,13 @@ void generate_quasar_merger(Body *bodies, int n, double separation,
     double galaxy_mass = (double)n1 * 2.0;
     double total_mass = galaxy_mass + galaxy_mass * 0.7;
 
-    // Compute orbital velocity for a bound elliptical encounter.
+    // Compute orbital velocity for a decaying merger encounter.
     // v_circ = sqrt(G * M_total / r) gives circular orbit speed.
-    // Use 0.6 * v_circ for an eccentric (plunging) orbit that still
-    // has enough angular momentum for a proper first pass + tidal tails.
+    // Use 0.35 * v_circ for a bound orbit with enough angular momentum
+    // for one visible pass with tidal tails, but low enough to merge
+    // within the simulation via dynamical friction.
     double v_circ = sqrt(total_mass / separation);
-    double v_orbit = v_circ * 0.6;
+    double v_orbit = v_circ * 0.35;
 
     // Galaxy 1: left, moving up (tangential)
     // Small radial component for slight infall, large tangential for orbit

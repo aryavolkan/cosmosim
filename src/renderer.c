@@ -458,7 +458,7 @@ void renderer_draw(const Body *bodies, int n, const Camera *cam,
                 if (smbh_eh_radii[s] > 0.06f) smbh_eh_radii[s] = 0.06f;
             }
             smbh_masses[s] = rcfg->smbhs[s].mass;
-            smbh_lensing[s] = rcfg->smbhs[s].mass * 0.001f;
+            smbh_lensing[s] = rcfg->smbhs[s].mass * 0.003f;
         }
 
         // Composite to screen
