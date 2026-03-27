@@ -28,8 +28,8 @@ void main()
         // SMBH: large bright point
         base_size = 30.0;
     } else if (body_type == 3) {
-        // JET: elongated, medium size
-        base_size = clamp(3.0 + length(a_velocity) * 0.1, 3.0, 15.0);
+        // JET: bright, visible streaks
+        base_size = clamp(5.0 + length(a_velocity) * 0.3, 5.0, 25.0);
     } else {
         // STAR/GAS: same as before
         base_size = clamp(1.0 + log(a_mass + 1.0) * 2.0, 1.0, 20.0);

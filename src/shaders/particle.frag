@@ -25,10 +25,10 @@ void main()
         color = vec3(0.3, 0.3, 0.4);
         intensity = exp(-r_sq * 20.0) * 0.3;
     } else if (body_type == 3) {
-        // JET: blue-white with cyan edges
-        float core = exp(-r_sq * 24.0);
-        vec3 core_color = vec3(1.5, 1.8, 2.5);
-        vec3 edge_color = vec3(0.3, 0.8, 1.2);
+        // JET: bright blue-white beams
+        float core = exp(-r_sq * 12.0);
+        vec3 core_color = vec3(3.0, 3.5, 5.0);
+        vec3 edge_color = vec3(0.5, 1.2, 2.0);
         color = mix(edge_color, core_color, core);
     } else if (body_type == 1) {
         // GAS: temperature-based

@@ -43,7 +43,7 @@ QuasarConfig quasar_default_config(void)
     cfg.viscosity_alpha = 0.05;
     cfg.jet_speed = 20.0;
     cfg.jet_mass = 0.5;
-    cfg.jet_lifetime = 2.0;
+    cfg.jet_lifetime = 5.0;
     cfg.feedback_strength = 1.0;
     cfg.eta_eff = 0.1;
     cfg.eddington_k = 0.5;
@@ -210,8 +210,8 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
         double jet_energy = 0.5 * cfg->jet_mass * cfg->jet_speed * cfg->jet_speed;
         if (jet_energy < 1e-15) continue;
         int n_spawn = (int)(smbh->luminosity / jet_energy);
-        if (n_spawn < 1) n_spawn = 1;
-        if (n_spawn > 4) n_spawn = 4;
+        if (n_spawn < 2) n_spawn = 2;
+        if (n_spawn > 8) n_spawn = 8;
 
         for (int j = 0; j < n_spawn && cfg->jet_count < cfg->jet_cap; j++) {
             if (*n >= n_alloc) break;

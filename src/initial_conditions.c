@@ -129,11 +129,13 @@ void generate_quasar_galaxy(Body *bodies, int n, double cx, double cy,
     // Upgrade central body to SMBH
     bodies[0].mass = galaxy_mass * smbh_mass_frac;
     bodies[0].type = BODY_SMBH;
+    // Tilt spin axis so jets are visible in the camera plane (not edge-on)
     bodies[0].spin_x = 0.0;
-    bodies[0].spin_y = 0.0;
-    bodies[0].spin_z = 1.0;
-    bodies[0].accretion_rate = 0.0;
-    bodies[0].luminosity = 0.0;
+    bodies[0].spin_y = 0.7071;
+    bodies[0].spin_z = 0.7071;
+    // Seed initial accretion so jets start immediately
+    bodies[0].accretion_rate = galaxy_mass * 0.001;
+    bodies[0].luminosity = 0.1 * bodies[0].accretion_rate;
 
     // Pre-seed inner 20% as gas
     double inner_radius_sq = (disk_radius * 0.2) * (disk_radius * 0.2);
