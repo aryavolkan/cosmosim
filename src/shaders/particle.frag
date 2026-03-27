@@ -74,23 +74,35 @@ void main()
         color = mix(vec3(0.6, 0.7, 1.0), vec3(1.0, 0.8, 0.3), t);
     }
 
-    // ── Relativistic Doppler shift ───────────────────────────────────────────
-    // Particles approaching the camera blue-shift; receding ones red-shift.
-    // beta = v/c_sim where c_sim ≈ 40 sim-units (jet speed ~15–25, orbitals ~3–10).
-    // Applied as a multiplicative color modifier so base hues are preserved.
+    // ── Relativistic Doppler shift + beaming intensity ────────────────────
+    // Approaching particles are blue-shifted AND brighter (I ∝ D^3 where D = 1/(γ(1-β·cosθ)))
+    // Receding particles are red-shifted AND dimmer.
     float v_spd = length(v_velocity);
     if (v_spd > 0.5) {
         float beta     = clamp(v_spd / 40.0, 0.0, 0.92);
         vec3  to_cam   = normalize(u_camera_pos - v_world_pos);
-        float v_radial = dot(v_velocity / v_spd, to_cam); // +1 = approaching
-        float shift    = v_radial * beta;
+        float cos_theta = dot(v_velocity / v_spd, to_cam); // +1 = approaching
 
+        // Relativistic beaming: D = 1 / (gamma * (1 - beta * cos_theta))
+        // For jets (body_type 3), apply full D^3 intensity scaling
+        // For other particles, apply mild D^1 scaling (just color shift)
+        float D = 1.0 / (sqrt(1.0 - beta * beta) * (1.0 - beta * cos_theta));
+        D = clamp(D, 0.1, 12.0);
+
+        if (body_type == 3) {
+            // Full relativistic beaming for jets: I ∝ D^3
+            float beam = D * D * D;
+            beam = clamp(beam, 0.02, 10.0);
+            intensity *= beam;
+            color *= beam * 0.3 + 0.7; // partial color boost to avoid total whiteout
+        }
+
+        // Color shift for all particle types
+        float shift = cos_theta * beta;
         if (shift > 0.025) {
-            // Approaching: blue-shift — tint toward cold-blue
             vec3 blue_mod = vec3(0.62, 0.80, 1.48);
             color = mix(color, color * blue_mod, clamp(shift * 1.6, 0.0, 0.82));
         } else if (shift < -0.025) {
-            // Receding: red-shift + slight dimming
             vec3 red_mod = vec3(1.48, 0.58, 0.20);
             color = mix(color, color * red_mod, clamp(-shift * 1.3, 0.0, 0.75));
         }
