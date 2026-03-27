@@ -16,7 +16,7 @@
 
 #define DEFAULT_N       20000
 #define G               1.0
-#define SOFTENING       0.5
+#define SOFTENING       1.5
 #define THETA           0.5
 #define DT              0.005
 #define SUBSTEPS        2
@@ -24,8 +24,8 @@
 #define WINDOW_HEIGHT   800
 #define DEFAULT_SMBH_MASS_FRAC     0.05
 #define DEFAULT_ACCRETION_RADIUS   3.0
-#define DEFAULT_JET_SPEED          20.0
-#define DEFAULT_FEEDBACK_STRENGTH  1.0
+#define DEFAULT_JET_SPEED          8.0
+#define DEFAULT_FEEDBACK_STRENGTH  0.3
 #define DEFAULT_RENDER_WIDTH       1920
 #define DEFAULT_RENDER_HEIGHT      1080
 #define DEFAULT_RENDER_FRAMES      1000
