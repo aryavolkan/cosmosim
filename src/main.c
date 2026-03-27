@@ -395,12 +395,26 @@ int main(int argc, char **argv)
 
         Camera render_cam = {0.8f, 0.4f, 20.0f, 0.0f, 0.0f, 0.0f};
 
-        // Initialize camera target to SMBH position
+        // Initialize camera target to midpoint of all SMBHs
         if (quasar) {
+            float mid_x = 0, mid_y = 0, mid_z = 0;
+            int smbh_count = 0;
+            for (int i = 0; i < current_n; i++) {
+                if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+                    mid_x += (float)bodies[i].x;
+                    mid_y += (float)bodies[i].y;
+                    mid_z += (float)bodies[i].z;
+                    smbh_count++;
+                }
+            }
+            if (smbh_count > 0) {
+                render_cam.target_x = mid_x / smbh_count;
+                render_cam.target_y = mid_y / smbh_count;
+                render_cam.target_z = mid_z / smbh_count;
+            }
+            // Start zoomed out for merger
+            if (merger && smbh_count > 1) render_cam.distance = 60.0f;
             renderer_update_smbh(&rcfg, bodies, current_n);
-            render_cam.target_x = rcfg.smbh_x;
-            render_cam.target_y = rcfg.smbh_y;
-            render_cam.target_z = rcfg.smbh_z;
         }
 
         printf("Rendering %d frames at %dx%d to %s/\n",
@@ -426,61 +440,58 @@ int main(int argc, char **argv)
                 }
             }
 
-            /* Camera: track SMBH with dynamic distance */
+            /* Camera: track SMBH(s) with dynamic distance */
             render_cam.azimuth += orbit_speed;
 
-            // Track SMBH position with smoothing to avoid jitter
-            render_cam.target_x = 0.95f * render_cam.target_x + 0.05f * rcfg.smbh_x;
-            render_cam.target_y = 0.95f * render_cam.target_y + 0.05f * rcfg.smbh_y;
-            render_cam.target_z = 0.95f * render_cam.target_z + 0.05f * rcfg.smbh_z;
-
-            // Compute neighborhood radius (80th percentile of particles near SMBH)
+            // Find all SMBHs and compute midpoint + separation
             {
-                double smbh_x = (double)rcfg.smbh_x;
-                double smbh_y = (double)rcfg.smbh_y;
-                double smbh_z = (double)rcfg.smbh_z;
-                double neighborhood = qcfg.accretion_radius * 5.0;
-                double neighborhood_sq = neighborhood * neighborhood;
-
-                // Collect distances of nearby particles
-                int nearby_count = 0;
-                float *dists = malloc(current_n * sizeof(float));
-                for (int i = 0; i < current_n; i++) {
-                    if (bodies[i].mass <= 0.0) continue;
-                    double dx = bodies[i].x - smbh_x;
-                    double dy = bodies[i].y - smbh_y;
-                    double dz = bodies[i].z - smbh_z;
-                    double d_sq = dx * dx + dy * dy + dz * dz;
-                    if (d_sq <= neighborhood_sq) {
-                        dists[nearby_count++] = (float)sqrt(d_sq);
+                float smbh_pos[2][3] = {{0}};
+                int smbh_count = 0;
+                for (int i = 0; i < current_n && smbh_count < 2; i++) {
+                    if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+                        smbh_pos[smbh_count][0] = (float)bodies[i].x;
+                        smbh_pos[smbh_count][1] = (float)bodies[i].y;
+                        smbh_pos[smbh_count][2] = (float)bodies[i].z;
+                        smbh_count++;
                     }
                 }
 
-                // Find 80th percentile via selection
-                float target_dist = 20.0f;
-                if (nearby_count > 0) {
-                    // Simple sort for percentile (N is small after neighborhood filter)
-                    for (int i = 0; i < nearby_count - 1; i++) {
-                        for (int j = i + 1; j < nearby_count; j++) {
-                            if (dists[j] < dists[i]) {
-                                float tmp = dists[i];
-                                dists[i] = dists[j];
-                                dists[j] = tmp;
-                            }
-                        }
-                    }
-                    int p80_idx = (int)(nearby_count * 0.8);
-                    if (p80_idx >= nearby_count) p80_idx = nearby_count - 1;
-                    target_dist = dists[p80_idx] * 2.5f;
+                // Camera target: midpoint of all SMBHs
+                float mid_x = smbh_pos[0][0], mid_y = smbh_pos[0][1], mid_z = smbh_pos[0][2];
+                float smbh_sep = 0.0f;
+                if (smbh_count == 2) {
+                    mid_x = (smbh_pos[0][0] + smbh_pos[1][0]) * 0.5f;
+                    mid_y = (smbh_pos[0][1] + smbh_pos[1][1]) * 0.5f;
+                    mid_z = (smbh_pos[0][2] + smbh_pos[1][2]) * 0.5f;
+                    float dx = smbh_pos[1][0] - smbh_pos[0][0];
+                    float dy = smbh_pos[1][1] - smbh_pos[0][1];
+                    float dz = smbh_pos[1][2] - smbh_pos[0][2];
+                    smbh_sep = sqrtf(dx*dx + dy*dy + dz*dz);
                 }
-                free(dists);
 
-                // Clamp target distance
+                // Smooth camera target
+                render_cam.target_x = 0.95f * render_cam.target_x + 0.05f * mid_x;
+                render_cam.target_y = 0.95f * render_cam.target_y + 0.05f * mid_y;
+                render_cam.target_z = 0.95f * render_cam.target_z + 0.05f * mid_z;
+
+                // Camera distance: based on SMBH separation + neighborhood size
+                // When far apart: zoom out to see both galaxies
+                // When merged: zoom in to accretion disk
+                float target_dist;
+                if (smbh_sep > 5.0f) {
+                    // Show both galaxies: distance = separation * 1.2 + some padding
+                    target_dist = smbh_sep * 1.2f + 15.0f;
+                } else {
+                    // Merged or close: zoom to accretion neighborhood
+                    target_dist = 20.0f;
+                }
+
+                // Clamp
                 if (target_dist < 8.0f) target_dist = 8.0f;
-                if (target_dist > 40.0f) target_dist = 40.0f;
+                if (target_dist > 120.0f) target_dist = 120.0f;
 
                 // Smooth camera distance
-                render_cam.distance = 0.95f * render_cam.distance + 0.05f * target_dist;
+                render_cam.distance = 0.97f * render_cam.distance + 0.03f * target_dist;
             }
 
             /* Render to FBO */
