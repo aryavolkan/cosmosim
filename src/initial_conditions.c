@@ -183,7 +183,7 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
     double cx2 = separation * 0.5;
 
     int n_tidal = n_dust / 3;
-    int n_halo1 = n_dust / 3;
+    int n_halo1 = (n_dust - n_tidal) / 2;
     int n_halo2 = n_dust - n_tidal - n_halo1;
 
     /* Tidal bridge: elongated dust cloud connecting the two galaxy centers */
@@ -296,7 +296,6 @@ void generate_quasar_merger(
     {
         double tilt = 50.0 * M_PI / 180.0;
         double ct = cos(tilt), st = sin(tilt);
-        double cx2 = separation * 0.5;
 
         for (int i = n1; i < n1 + n2; i++) {
             // Translate to galaxy center, rotate, translate back
