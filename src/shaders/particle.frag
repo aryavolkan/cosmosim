@@ -8,7 +8,8 @@ in vec3 v_world_pos;
 
 uniform vec3 u_smbh_pos;
 uniform float u_smbh_luminosity;
-uniform vec3 u_camera_pos;  // world-space camera position for Doppler
+uniform vec3 u_camera_pos;   // world-space camera position for Doppler
+uniform float u_alpha_scale; // density-based alpha reduction to prevent additive blowout
 
 out vec4 frag_color;
 
@@ -17,7 +18,8 @@ void main()
     vec2 coord = gl_PointCoord - vec2(0.5);
     float r_sq = dot(coord, coord);
 
-    if (r_sq > 0.25) discard;
+    if (r_sq > 0.25)
+        discard;
 
     float intensity = exp(-r_sq * 16.0);
     int body_type = int(v_type + 0.5);
@@ -48,7 +50,7 @@ void main()
         // GAS: temperature-based + shock front visualization
         float t = clamp(log(v_mass + 1.0) / 5.0, 0.0, 1.0);
         vec3 cool_gas = vec3(1.0, 0.4, 0.1);
-        vec3 hot_gas  = vec3(1.5, 1.3, 1.2);
+        vec3 hot_gas = vec3(1.5, 1.3, 1.2);
         float brightness_boost = u_smbh_luminosity * 0.01;
         color = mix(cool_gas, hot_gas, t) * (1.0 + brightness_boost);
         // Shock front: high-velocity gas glows blue-white
@@ -59,8 +61,8 @@ void main()
     } else if (body_type == 4) {
         // DUST: temperature gradient cold → warm → hot near SMBH
         vec3 cold_dust = vec3(0.65, 0.22, 0.05);
-        vec3 warm_dust = vec3(1.1,  0.55, 0.08);
-        vec3 hot_dust  = vec3(1.8,  1.4,  2.6);
+        vec3 warm_dust = vec3(1.1, 0.55, 0.08);
+        vec3 hot_dust = vec3(1.8, 1.4, 2.6);
         if (v_temperature < 0.5) {
             color = mix(cold_dust, warm_dust, v_temperature * 2.0);
         } else {
@@ -70,8 +72,8 @@ void main()
 
     } else if (body_type == 5) {
         // LOBE: diffuse warm glow at jet termination — hotspot + cocoon
-        vec3 lobe_hot  = vec3(2.0, 1.5, 0.8);   // hotspot core
-        vec3 lobe_cool = vec3(0.4, 0.3, 0.7);    // diffuse radio lobe
+        vec3 lobe_hot = vec3(2.0, 1.5, 0.8);  // hotspot core
+        vec3 lobe_cool = vec3(0.4, 0.3, 0.7); // diffuse radio lobe
         float core_frac = exp(-r_sq * 6.0);
         color = mix(lobe_cool, lobe_hot, core_frac);
         intensity = exp(-r_sq * 3.0) * 0.5; // very diffuse
@@ -87,8 +89,8 @@ void main()
     // Receding particles are red-shifted AND dimmer.
     float v_spd = length(v_velocity);
     if (v_spd > 0.5) {
-        float beta     = clamp(v_spd / 40.0, 0.0, 0.92);
-        vec3  to_cam   = normalize(u_camera_pos - v_world_pos);
+        float beta = clamp(v_spd / 40.0, 0.0, 0.92);
+        vec3 to_cam = normalize(u_camera_pos - v_world_pos);
         float cos_theta = dot(v_velocity / v_spd, to_cam); // +1 = approaching
 
         // Relativistic beaming: D = 1 / (gamma * (1 - beta * cos_theta))
@@ -116,5 +118,7 @@ void main()
         }
     }
 
-    frag_color = vec4(color * intensity, intensity * 0.8);
+    // Apply density-based alpha scaling to prevent additive blending blowout
+    float alpha = intensity * 0.8 * u_alpha_scale;
+    frag_color = vec4(color * intensity * u_alpha_scale, alpha);
 }

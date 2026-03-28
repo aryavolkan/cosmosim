@@ -16,6 +16,7 @@ static GLint u_view_loc, u_proj_loc;
 static GLint u_smbh_pos_loc, u_smbh_lum_loc;
 static GLint u_smbh_count_particle_loc, u_smbh_world_pos_loc;
 static GLint u_camera_pos_loc;
+static GLint u_alpha_scale_loc;
 static float *upload_buf = NULL;
 static int upload_buf_capacity = 0;
 
@@ -184,6 +185,7 @@ int renderer_init(const RendererConfig *rcfg)
     u_smbh_count_particle_loc = glGetUniformLocation(particle_program, "u_smbh_count");
     u_smbh_world_pos_loc = glGetUniformLocation(particle_program, "u_smbh_world_pos");
     u_camera_pos_loc = glGetUniformLocation(particle_program, "u_camera_pos");
+    u_alpha_scale_loc = glGetUniformLocation(particle_program, "u_alpha_scale");
 
     // VAO/VBO: pos(3) + mass(1) + vel(3) + type(1) = 8 floats
     glGenVertexArrays(1, &vao);
@@ -356,7 +358,11 @@ void renderer_draw(const Body *bodies,
         float cam_y = cam->target_y + cam->distance * cosf(cam->elevation) * sinf(cam->azimuth);
         float cam_z = cam->target_z + cam->distance * sinf(cam->elevation);
 
-        float total_lum = 0.0f;
+        // Use log-average luminance (geometric mean) for exposure.
+        // This handles dense particle fields much better than arithmetic mean —
+        // a few bright particles don't blow out the entire scene.
+        float log_lum_sum = 0.0f;
+        int lum_count = 0;
         for (int i = 0; i < count; i++) {
             int off = i * 8;
             float dx = upload_buf[off + 0] - cam_x;
@@ -364,17 +370,21 @@ void renderer_draw(const Body *bodies,
             float dz = upload_buf[off + 2] - cam_z;
             float dist_sq = dx * dx + dy * dy + dz * dz + 1.0f;
             float mass = upload_buf[off + 3];
-            total_lum += mass / dist_sq;
+            float lum = mass / dist_sq;
+            if (lum > 1e-6f) {
+                log_lum_sum += logf(lum + 1e-6f);
+                lum_count++;
+            }
         }
-        float avg_lum = count > 0 ? total_lum / (float)count : 0.001f;
+        float avg_lum = lum_count > 0 ? expf(log_lum_sum / (float)lum_count) : 0.001f;
         if (avg_lum < 0.001f)
             avg_lum = 0.001f;
 
         float target_exposure = 0.18f / avg_lum;
-        if (target_exposure < 0.5f)
-            target_exposure = 0.5f;
-        if (target_exposure > 20.0f)
-            target_exposure = 20.0f;
+        if (target_exposure < 0.1f)
+            target_exposure = 0.1f;
+        if (target_exposure > 8.0f)
+            target_exposure = 8.0f;
 
         // Cast away const for exposure update (exposure is mutable render state)
         ((RendererConfig *)rcfg)->exposure = 0.9f * rcfg->exposure + 0.1f * target_exposure;
@@ -418,6 +428,20 @@ void renderer_draw(const Body *bodies,
     // Camera world-space position for per-particle Doppler shift
     if (u_camera_pos_loc >= 0)
         glUniform3f(u_camera_pos_loc, eye_x, eye_y, eye_z);
+
+    // Density-based alpha scale: reduce particle alpha when many particles visible
+    // to prevent additive blending from blowing out dense post-merger scenes.
+    // Use sqrt scaling: alpha = sqrt(5000/N) — gentle enough to keep particles
+    // visible while preventing blowout in dense regions.
+    if (u_alpha_scale_loc >= 0) {
+        float alpha_s = 1.0f;
+        if (count > 5000) {
+            alpha_s = sqrtf(5000.0f / (float)count);
+            if (alpha_s < 0.05f)
+                alpha_s = 0.05f;
+        }
+        glUniform1f(u_alpha_scale_loc, alpha_s);
+    }
 
     // Pass all SMBH world positions for per-particle temperature (dust heating)
     if (rcfg && u_smbh_count_particle_loc >= 0) {
