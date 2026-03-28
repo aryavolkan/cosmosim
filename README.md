@@ -1,21 +1,56 @@
 # cosmosim
 
-Real-time 3D N-body gravity simulator using the Barnes-Hut algorithm. Renders tens of thousands of gravitationally interacting particles as a spiral galaxy or galaxy merger.
+Real-time 3D N-body gravity simulator with quasar physics, relativistic jets, and black hole rendering. Simulates galaxy mergers with event horizons, photon rings, gravitational lensing, and Doppler-shifted particle dynamics using the Barnes-Hut algorithm.
 
 ![C](https://img.shields.io/badge/C11-grey?logo=c) ![OpenGL](https://img.shields.io/badge/OpenGL%203.3-blue?logo=opengl)
 
+## Galaxy Merger Simulation
+
+Milky Way - Andromeda collision with 100,000 gravitationally interacting particles, two supermassive black holes, relativistic jets, and physically-based gravitational lensing.
+
+<p align="center">
+<img src="docs/gifs/merger-default.gif" width="600" alt="Galaxy merger — default view">
+</p>
+
+### Multiple viewing angles
+
+| Top-down | Edge-on | Side view |
+|:--------:|:-------:|:---------:|
+| <img src="docs/gifs/merger-topdown.gif" width="280"> | <img src="docs/gifs/merger-edgeon.gif" width="280"> | <img src="docs/gifs/merger-side.gif" width="280"> |
+
 ## Features
 
+### Gravity
 - **Barnes-Hut octree** for O(N log N) force computation
-- **Symplectic leapfrog integrator** (kick-drift-kick) for energy-conserving time evolution
+- **Symplectic leapfrog integrator** (kick-drift-kick) for energy conservation
 - **OpenMP parallelization** of force calculations
-- **3D perspective rendering** with orbit camera and additive-blend point sprites
-- Mass-dependent particle color (blue-white → orange) and size
-- Two simulation modes: single spiral galaxy and galaxy merger
+- Plummer softening to prevent close-encounter ejection
+
+### Quasar Physics
+- **SMBH accretion** with Eddington-limited luminosity
+- **Relativistic jets** with D^3 Doppler beaming, limb brightening, knot structure, and helical morphology
+- **Jet lobes** — hotspot/cocoon structures at jet termination points
+- **AGN feedback** — radiation pressure drives gas outward
+- **Particle recycling** — distant jet particles recycle as infalling gas
+
+### Rendering
+- **Event horizon shadow** with soft edge at Schwarzschild radius
+- **Photon ring** (primary + secondary) with frame-dragging Doppler asymmetry
+- **Schwarzschild gravitational lensing** — proper 1/b deflection with Einstein ring
+- **Procedural background starfield** sampled at lensed UV for visible star arcs
+- **Adaptive HDR exposure** with Reinhard tonemapping
+- **Bloom** with multi-pass Gaussian blur
+- **Relativistic Doppler color shifts** — blue-shift approaching, red-shift receding
+
+### Merger Physics
+- Milky Way / Andromeda mass ratio (1:1.2)
+- Tilted disk geometry (50 deg relative inclination)
+- Nearly radial approach with dynamical friction merger
+- Dual SMBH tracking with independent event horizons and jets
 
 ## Building
 
-Requires CMake 3.16+ and a C11 compiler. GLFW is fetched automatically if not found on the system.
+Requires CMake 3.16+ and a C11 compiler. GLFW is fetched automatically.
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -24,17 +59,25 @@ cmake --build build
 
 ## Usage
 
-```
-./build/cosmosim [options]
+```bash
+# Single spiral galaxy (20k bodies)
+./build/cosmosim
 
-Options:
-  -n <count>    Number of bodies (default 20000)
-  -m, --merger  Galaxy merger mode (two colliding galaxies)
-  -dt <value>   Timestep (default 0.005)
-  -t <theta>    Barnes-Hut opening angle (default 0.5, lower = more accurate)
+# Quasar merger — Milky Way vs Andromeda (100k bodies)
+./build/cosmosim -q -m -n 100000
+
+# Offline render to video frames
+./build/cosmosim -q -m --render frames --frames 600 --render-substeps 32 -n 100000
+
+# Render from different camera angle
+./build/cosmosim -q -m --render frames --frames 600 -n 50000 \
+    --cam-azimuth 0.0 --cam-elevation 1.5
+
+# Encode frames to video
+ffmpeg -framerate 60 -i frames/frame_%06d.ppm -c:v libx264 -pix_fmt yuv420p output.mp4
 ```
 
-### Controls
+### Controls (Interactive Mode)
 
 | Input | Action |
 |-------|--------|
@@ -45,52 +88,34 @@ Options:
 | R | Reset camera |
 | Q / Esc | Quit |
 
-### Examples
-
-```bash
-# Default: 20k-body spiral galaxy
-./build/cosmosim
-
-# Large simulation
-./build/cosmosim -n 100000
-
-# Galaxy merger with 50k bodies
-./build/cosmosim -m -n 50000
-
-# High accuracy (smaller theta = less approximation)
-./build/cosmosim -t 0.3
-```
-
 ## Testing
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && ./build/test_physics
-# Or via CTest:
-cd build && ctest
 ```
 
-Tests cover octree construction, force computation (Newton's 3rd law, inverse-square, octree-vs-direct comparison), integrator conservation laws (energy, momentum), and initial conditions generation. No GPU/display required.
+26 tests covering octree construction, force computation (Newton's 3rd law, inverse-square, octree-vs-direct), integrator conservation laws, initial conditions, quasar accretion/feedback, jet spawning/recycling, camera smoothing, and lobe creation. No GPU required.
 
 ## Architecture
 
 | Module | Purpose |
 |--------|---------|
-| `body.h` | `Body` struct: 3D position, velocity, acceleration, mass (all `double`) |
-| `octree.c/h` | Barnes-Hut octree with flat pool allocator (`8*n` nodes). Rebuilt from scratch each substep |
-| `integrator.c/h` | Kick-drift-kick leapfrog, 2 substeps per frame |
-| `renderer.c/h` | OpenGL point-sprite renderer, orbit camera (spherical coords), additive blending, depth test disabled |
-| `initial_conditions.c/h` | Exponential-disk spiral galaxies with xorshift64 PRNG, or two-galaxy merger |
-| `src/shaders/` | GLSL 330: mass-based coloring (blue->orange) with gaussian falloff, perspective point-size attenuation |
-
-Physics uses `double` precision; renderer converts to `float` for GPU upload. Shaders loaded from disk at runtime via `SHADER_DIR` compile define (set by CMake to `src/shaders/`).
+| `body.h` | Body struct with position, velocity, mass, type (STAR/GAS/SMBH/JET/DUST/LOBE), spin axis, luminosity |
+| `octree.c/h` | Barnes-Hut octree with flat pool allocator, rebuilt each substep |
+| `integrator.c/h` | Kick-drift-kick leapfrog, configurable substeps per frame |
+| `renderer.c/h` | OpenGL HDR pipeline: particle rendering, bloom extraction/blur, composite with lensing + event horizon |
+| `quasar.c/h` | SMBH accretion, AGN feedback, jet spawning (ring cross-section + burst knots), lobe creation, particle recycling |
+| `initial_conditions.c/h` | Exponential-disk galaxies, quasar merger with tilted disks and orbital velocities |
+| `src/shaders/` | GLSL 330: Schwarzschild lensing, photon rings, Doppler beaming, temperature-based particle coloring |
 
 ## How It Works
 
-Each frame the simulation:
+Each frame:
 
-1. **Builds an octree** over all body positions in 3D, computing center-of-mass summaries at each node
-2. **Computes gravitational forces** by walking the tree — distant clusters are approximated as point masses when they subtend an angle smaller than theta (the Barnes-Hut criterion)
-3. **Integrates motion** using a symplectic leapfrog scheme (2 substeps per frame) that conserves energy over long timescales
-4. **Renders** all bodies as OpenGL point sprites with perspective projection and additive blending — color shifts from blue-white (low mass) to orange (high mass)
+1. **Build octree** over all body positions, computing center-of-mass at each node
+2. **Compute forces** via Barnes-Hut tree walk (distant clusters = point masses)
+3. **Quasar step** — accretion, luminosity update, AGN feedback, jet decay/spawning, lobe creation
+4. **Integrate** — symplectic leapfrog (configurable substeps for accuracy)
+5. **Render** — upload to GPU, draw point sprites, HDR bloom, composite pass with gravitational lensing, event horizons, photon rings, tonemapping
 
-Initial conditions place bodies in an exponential disk with circular orbital velocities derived from the enclosed mass profile, plus a thin vertical dispersion. In merger mode, two galaxies are set on a collision course with offset trajectories.
+Physics at `double` precision; renderer converts to `float` for GPU. Camera tracks SMBH midpoint with exponential smoothing. Shaders loaded from disk at runtime.

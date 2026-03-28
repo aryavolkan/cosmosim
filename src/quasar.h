@@ -18,6 +18,7 @@ typedef struct {
     int jet_cap;                // max jet particles alive at once
     int jet_count;              // current live jet particles (internal state)
     int max_bodies;             // capacity of body array (for jet spawning)
+    int jet_ring_count;         // particles per jet cross-section ring (limb brightening)
 } QuasarConfig;
 
 QuasarConfig quasar_default_config(void);
@@ -32,5 +33,8 @@ void quasar_step(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt
 
 // Compact dead bodies out of the array. Returns new count.
 int quasar_compact(Body *bodies, int n);
+
+/* Test-only wrapper */
+void decay_jets_wrapper(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt);
 
 #endif

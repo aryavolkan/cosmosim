@@ -527,11 +527,16 @@ void renderer_draw(const Body *bodies,
             float spx = rcfg->smbhs[s].spin_x;
             float spy = rcfg->smbhs[s].spin_y;
             float spz = rcfg->smbhs[s].spin_z;
-            float vs_x = view[0]*spx + view[4]*spy + view[8]*spz;
-            float vs_y = view[1]*spx + view[5]*spy + view[9]*spz;
-            float vs_len = sqrtf(vs_x*vs_x + vs_y*vs_y);
-            if (vs_len > 1e-6f) { vs_x /= vs_len; vs_y /= vs_len; }
-            else { vs_x = 0.0f; vs_y = 1.0f; }
+            float vs_x = view[0] * spx + view[4] * spy + view[8] * spz;
+            float vs_y = view[1] * spx + view[5] * spy + view[9] * spz;
+            float vs_len = sqrtf(vs_x * vs_x + vs_y * vs_y);
+            if (vs_len > 1e-6f) {
+                vs_x /= vs_len;
+                vs_y /= vs_len;
+            } else {
+                vs_x = 0.0f;
+                vs_y = 1.0f;
+            }
             smbh_spin_screen[s * 2 + 0] = vs_x;
             smbh_spin_screen[s * 2 + 1] = vs_y;
         }
@@ -558,8 +563,8 @@ void renderer_draw(const Body *bodies,
         glUniform1fv(
             glGetUniformLocation(composite_program, "u_eh_radius"), MAX_SMBH, smbh_eh_radii);
         glUniform1f(glGetUniformLocation(composite_program, "u_aspect"), aspect);
-        glUniform2fv(glGetUniformLocation(composite_program, "u_smbh_spin"),
-                     MAX_SMBH, smbh_spin_screen);
+        glUniform2fv(
+            glGetUniformLocation(composite_program, "u_smbh_spin"), MAX_SMBH, smbh_spin_screen);
         draw_fullscreen_quad();
     } else if (hdr_active) {
         // Fallback blit

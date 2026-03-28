@@ -176,14 +176,14 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
     double disk_radius = separation * 0.15;
     /* Approximate galaxy mass from the body count (matches generate_quasar_merger) */
     double galaxy_mass = (double)(start_idx / 2) * 2.0;
-    double galaxy_mass2 = galaxy_mass * 0.7;
-    double disk_r2 = disk_radius * 0.8;
+    double galaxy_mass2 = galaxy_mass * 1.2;
+    double disk_r2 = disk_radius * 1.3;
 
     double cx1 = -separation * 0.5;
-    double cx2 =  separation * 0.5;
+    double cx2 = separation * 0.5;
 
     int n_tidal = n_dust / 3;
-    int n_halo1 = n_dust / 3;
+    int n_halo1 = (n_dust - n_tidal) / 2;
     int n_halo2 = n_dust - n_tidal - n_halo1;
 
     /* Tidal bridge: elongated dust cloud connecting the two galaxy centers */
@@ -203,7 +203,7 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
             r = 1e-10;
         double v_c = sqrt(galaxy_mass / r) * 0.25;
         bodies[idx].vx = -v_c * by / r + rng_gaussian() * 0.4;
-        bodies[idx].vy =  v_c * bx / r + rng_gaussian() * 0.4;
+        bodies[idx].vy = v_c * bx / r + rng_gaussian() * 0.4;
         bodies[idx].vz = rng_gaussian() * 0.2;
     }
 
@@ -213,14 +213,14 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
         double r = disk_radius * (0.7 + 0.9 * sqrt(rng_uniform()));
         double theta = 2.0 * M_PI * rng_uniform();
         bodies[idx].x = cx1 + r * cos(theta);
-        bodies[idx].y =        r * sin(theta);
+        bodies[idx].y = r * sin(theta);
         bodies[idx].z = rng_gaussian() * disk_radius * 0.08;
         bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
         bodies[idx].type = BODY_DUST;
         double v_c = sqrt(galaxy_mass / r) * 0.75;
         double disp = v_c * 0.08;
         bodies[idx].vx = -v_c * sin(theta) + rng_gaussian() * disp;
-        bodies[idx].vy =  v_c * cos(theta) + rng_gaussian() * disp;
+        bodies[idx].vy = v_c * cos(theta) + rng_gaussian() * disp;
         bodies[idx].vz = rng_gaussian() * disp * 0.3;
     }
 
@@ -230,14 +230,14 @@ void generate_merger_dust(Body *bodies, int start_idx, int n_dust, double separa
         double r = disk_r2 * (0.7 + 0.9 * sqrt(rng_uniform()));
         double theta = 2.0 * M_PI * rng_uniform();
         bodies[idx].x = cx2 + r * cos(theta);
-        bodies[idx].y =        r * sin(theta);
+        bodies[idx].y = r * sin(theta);
         bodies[idx].z = rng_gaussian() * disk_r2 * 0.08;
         bodies[idx].mass = 0.4 + rng_uniform() * 0.6;
         bodies[idx].type = BODY_DUST;
         double v_c = sqrt(galaxy_mass2 / r) * 0.75;
         double disp = v_c * 0.08;
         bodies[idx].vx = -v_c * sin(theta) + rng_gaussian() * disp;
-        bodies[idx].vy =  v_c * cos(theta) + rng_gaussian() * disp;
+        bodies[idx].vy = v_c * cos(theta) + rng_gaussian() * disp;
         bodies[idx].vz = rng_gaussian() * disp * 0.3;
     }
 }
@@ -250,15 +250,16 @@ void generate_quasar_merger(
 
     double disk_radius = separation * 0.15;
     double galaxy_mass = (double)n1 * 2.0;
-    double total_mass = galaxy_mass + galaxy_mass * 0.7;
+    // Andromeda/Milky Way mass ratio: M31 is ~1.2x MW mass
+    double galaxy2_mass_ratio = 1.2;
+    double total_mass = galaxy_mass + galaxy_mass * galaxy2_mass_ratio;
 
     // Compute orbital velocity for a decaying merger encounter.
-    // v_circ = sqrt(G * M_total / r) gives circular orbit speed.
-    // Use 0.35 * v_circ for a bound orbit with enough angular momentum
-    // for one visible pass with tidal tails, but low enough to merge
-    // within the simulation via dynamical friction.
+    // MW-Andromeda approach is nearly radial (v_tangential ~ 0.17 * v_radial)
+    // Use 0.2 * v_circ for small tangential component — produces one
+    // grazing pass with tidal tails then rapid merger via dynamical friction.
     double v_circ = sqrt(total_mass / separation);
-    double v_orbit = v_circ * 0.35;
+    double v_orbit = v_circ * 0.2;
 
     // Galaxy 1: left, moving up (tangential)
     // Small radial component for slight infall, large tangential for orbit
@@ -267,10 +268,15 @@ void generate_quasar_merger(
 
     // Galaxy 2: right, moving down (opposite tangential)
     double vx2 = -approach_vel;
-    double vy2 = -v_orbit * 0.7; // slightly less (mass ratio asymmetry)
+    double vy2 = -v_orbit * 0.85; // slightly less (MW lighter than M31)
 
     generate_quasar_galaxy(
         bodies, n1, -separation * 0.5, 0.0, galaxy_mass, disk_radius, vx1, vy1, smbh_mass_frac);
+
+    // Galaxy 1 SMBH spin: aligned with disk normal (+z, tilted into view)
+    bodies[0].spin_x = 0.0;
+    bodies[0].spin_y = 0.7071;
+    bodies[0].spin_z = 0.7071;
 
     // Galaxy 2: re-seed RNG for different structure
     rng_seed((uint64_t)time(NULL) + 12345);
@@ -278,9 +284,40 @@ void generate_quasar_merger(
                            n2,
                            separation * 0.5,
                            0.0,
-                           galaxy_mass * 0.7,
-                           disk_radius * 0.8,
+                           galaxy_mass * galaxy2_mass_ratio,
+                           disk_radius * 1.3,
                            vx2,
                            vy2,
                            smbh_mass_frac);
+
+    // Tilt Galaxy 2's disk ~50° around the X-axis relative to Galaxy 1.
+    // This creates the inclined encounter geometry seen in MW-Andromeda.
+    // Rotation matrix Rx(50°): y' = y*cos - z*sin, z' = y*sin + z*cos
+    {
+        double tilt = 50.0 * M_PI / 180.0;
+        double ct = cos(tilt), st = sin(tilt);
+
+        for (int i = n1; i < n1 + n2; i++) {
+            // Translate to galaxy center, rotate, translate back
+            double y0 = bodies[i].y;
+            double z0 = bodies[i].z;
+            bodies[i].y = y0 * ct - z0 * st;
+            bodies[i].z = y0 * st + z0 * ct;
+
+            // Rotate velocities
+            double vy0 = bodies[i].vy;
+            double vz0 = bodies[i].vz;
+            bodies[i].vy = vy0 * ct - vz0 * st;
+            bodies[i].vz = vy0 * st + vz0 * ct;
+        }
+
+        // Galaxy 2 SMBH spin: tilted disk normal
+        // Original disk normal is (0, 0.7071, 0.7071), rotate by same tilt
+        double sy = 0.7071 * ct - 0.7071 * st;
+        double sz = 0.7071 * st + 0.7071 * ct;
+        double smag = sqrt(sy * sy + sz * sz);
+        bodies[n1].spin_x = 0.0;
+        bodies[n1].spin_y = sy / smag;
+        bodies[n1].spin_z = sz / smag;
+    }
 }

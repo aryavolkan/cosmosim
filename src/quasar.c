@@ -52,6 +52,7 @@ QuasarConfig quasar_default_config(void)
     cfg.jet_cap = 2000;
     cfg.jet_count = 0;
     cfg.max_bodies = 0;
+    cfg.jet_ring_count = 4;
     return cfg;
 }
 
@@ -217,13 +218,14 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
 
     /* Kelvin-Helmholtz / kink instability: periodically vary jet speed and cone
        angle to create visible knot clusters and helical structure in the beams. */
-    double phase_rad   = knot_phase * 0.10;
-    double phase_rad2  = knot_phase * 0.057;
+    double phase_rad = knot_phase * 0.10;
+    double phase_rad2 = knot_phase * 0.057;
     /* Speed modulation: 0.5× to 1.7× baseline — fast knots interleaved with gaps */
-    double speed_mod   = 1.0 + 0.6 * sin(phase_rad);
-    if (speed_mod < 0.5) speed_mod = 0.5;
+    double speed_mod = 1.0 + 0.6 * sin(phase_rad);
+    if (speed_mod < 0.5)
+        speed_mod = 0.5;
     /* Cone modulation: narrow to wide, offset in phase to create helical appearance */
-    double cone_angle  = 0.05 + 0.13 * (0.5 + 0.5 * sin(phase_rad2));
+    double cone_angle = 0.05 + 0.13 * (0.5 + 0.5 * sin(phase_rad2));
 
     /* Helix phase for lateral knot offset along the jet axis */
     double helix_phase = knot_phase * 0.04;
@@ -246,12 +248,12 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
         double perp_x, perp_y, perp_z;
         if (fabs(smbh->spin_z) < 0.9) {
             perp_x = -smbh->spin_y;
-            perp_y =  smbh->spin_x;
+            perp_y = smbh->spin_x;
             perp_z = 0.0;
         } else {
             perp_x = 0.0;
             perp_y = -smbh->spin_z;
-            perp_z =  smbh->spin_y;
+            perp_z = smbh->spin_y;
         }
         double pmag = sqrt(perp_x * perp_x + perp_y * perp_y + perp_z * perp_z);
         if (pmag > 1e-15) {
@@ -264,7 +266,7 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
         double perp2_x = smbh->spin_y * perp_z - smbh->spin_z * perp_y;
         double perp2_y = smbh->spin_z * perp_x - smbh->spin_x * perp_z;
         double perp2_z = smbh->spin_x * perp_y - smbh->spin_y * perp_x;
-        double pmag2 = sqrt(perp2_x*perp2_x + perp2_y*perp2_y + perp2_z*perp2_z);
+        double pmag2 = sqrt(perp2_x * perp2_x + perp2_y * perp2_y + perp2_z * perp2_z);
         if (pmag2 > 1e-15) {
             perp2_x /= pmag2;
             perp2_y /= pmag2;
@@ -293,53 +295,111 @@ static void spawn_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg)
             double sign = (j % 2 == 0) ? 1.0 : -1.0;
 
             /* Burst blobs: tight cone, higher speed, heavier mass, longer lifetime */
-            double this_cone  = is_burst ? 0.012 : cone_angle;
+            double this_cone = is_burst ? 0.012 : cone_angle;
             double this_speed = is_burst ? actual_speed * 1.28 : actual_speed;
-            double this_mass  = is_burst ? cfg->jet_mass * 1.9 : cfg->jet_mass;
-            double this_life  = is_burst ? cfg->jet_lifetime * 1.4 : cfg->jet_lifetime;
+            double this_mass = is_burst ? cfg->jet_mass * 1.9 : cfg->jet_mass;
+            double this_life = is_burst ? cfg->jet_lifetime * 1.4 : cfg->jet_lifetime;
             /* Burst particles spawn slightly ahead along the jet axis */
-            double axial_fwd  = is_burst ? cfg->swallow_radius * 0.6 : 0.0;
+            double axial_fwd = is_burst ? cfg->swallow_radius * 0.6 : 0.0;
 
-            double angle  = qrng_uniform() * 2.0 * M_PI;
+            double angle = qrng_uniform() * 2.0 * M_PI;
             double offset = qrng_gaussian() * this_cone;
 
-            Body *jet = &bodies[*n];
-            memset(jet, 0, sizeof(Body));
-            jet->type     = BODY_JET;
-            jet->mass     = this_mass;
-            jet->lifetime = this_life;
+            /* Spawn a ring of particles for limb brightening.
+               Edge particles get lower mass (fainter) but the ring geometry
+               creates a bright-edge, dim-center morphology when rendered
+               with additive blending. */
+            int ring_n = cfg->jet_ring_count;
+            if (is_burst)
+                ring_n = 1; /* bursts are single bright knots */
 
-            jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd)
-                     + offset * (perp_x * cos(angle))
-                     + sign * hx;
-            jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd)
-                     + offset * (perp_y * cos(angle))
-                     + sign * hy;
-            jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd)
-                     + offset * (perp_z * sin(angle))
-                     + sign * hz;
+            for (int r = 0; r < ring_n; r++) {
+                if (*n >= n_alloc || cfg->jet_count >= cfg->jet_cap)
+                    break;
 
-            jet->vx = smbh->vx + sign * smbh->spin_x * this_speed;
-            jet->vy = smbh->vy + sign * smbh->spin_y * this_speed;
-            jet->vz = smbh->vz + sign * smbh->spin_z * this_speed;
+                Body *jet = &bodies[*n];
+                memset(jet, 0, sizeof(Body));
+                jet->type = BODY_JET;
+                jet->lifetime = this_life;
 
-            (*n)++;
-            cfg->jet_count++;
+                double ring_angle = (ring_n > 1) ? 2.0 * M_PI * r / ring_n + angle : angle;
+                double ring_r = (ring_n > 1) ? cfg->swallow_radius * 0.15 : 0.0;
+
+                /* Ring offset perpendicular to jet axis */
+                double rx = ring_r * (cos(ring_angle) * perp_x + sin(ring_angle) * perp2_x);
+                double ry = ring_r * (cos(ring_angle) * perp_y + sin(ring_angle) * perp2_y);
+                double rz = ring_r * (cos(ring_angle) * perp_z + sin(ring_angle) * perp2_z);
+
+                /* Edge particles get slightly less mass (limb effect comes from
+                   additive blending of the ring overlapping at edges in projection) */
+                jet->mass = (ring_n > 1) ? this_mass * 0.6 : this_mass;
+
+                jet->x = smbh->x + sign * smbh->spin_x * (cfg->swallow_radius + axial_fwd) +
+                         offset * (perp_x * cos(angle)) + sign * hx + rx;
+                jet->y = smbh->y + sign * smbh->spin_y * (cfg->swallow_radius + axial_fwd) +
+                         offset * (perp_y * cos(angle)) + sign * hy + ry;
+                jet->z = smbh->z + sign * smbh->spin_z * (cfg->swallow_radius + axial_fwd) +
+                         offset * (perp_z * sin(angle)) + sign * hz + rz;
+
+                /* Slight outward velocity for progressive opening angle */
+                double expand_v = this_speed * 0.04 * (1.0 + jet->lifetime * 0.1);
+                jet->vx =
+                    smbh->vx + sign * smbh->spin_x * this_speed + rx * expand_v / (ring_r + 1e-15);
+                jet->vy =
+                    smbh->vy + sign * smbh->spin_y * this_speed + ry * expand_v / (ring_r + 1e-15);
+                jet->vz =
+                    smbh->vz + sign * smbh->spin_z * this_speed + rz * expand_v / (ring_r + 1e-15);
+
+                (*n)++;
+                cfg->jet_count++;
+            }
         }
     }
 }
 
-static void decay_jets(Body *bodies, int n, QuasarConfig *cfg, double dt)
+static void decay_jets(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt)
 {
-    for (int i = 0; i < n; i++) {
+    int current_n = *n;
+    for (int i = 0; i < current_n; i++) {
         if (bodies[i].type != BODY_JET || bodies[i].mass <= 0.0)
+            continue;
+        bodies[i].lifetime -= dt;
+        if (bodies[i].lifetime <= 0.0) {
+            /* Spawn a lobe particle at the jet termination point */
+            if (*n < n_alloc && bodies[i].mass > 0.2) {
+                Body *lobe = &bodies[*n];
+                memset(lobe, 0, sizeof(Body));
+                lobe->type = BODY_LOBE;
+                lobe->mass = bodies[i].mass * 0.5;
+                lobe->x = bodies[i].x;
+                lobe->y = bodies[i].y;
+                lobe->z = bodies[i].z;
+                /* Slow expansion from jet momentum + random spread */
+                double spread = 0.5;
+                lobe->vx = bodies[i].vx * 0.15 + (qrng_uniform() - 0.5) * spread;
+                lobe->vy = bodies[i].vy * 0.15 + (qrng_uniform() - 0.5) * spread;
+                lobe->vz = bodies[i].vz * 0.15 + (qrng_uniform() - 0.5) * spread;
+                lobe->lifetime = cfg->jet_lifetime * 3.0; /* lobes persist longer */
+                (*n)++;
+            }
+
+            /* Kill the jet particle */
+            bodies[i].mass = 0.0;
+            bodies[i].vx = bodies[i].vy = bodies[i].vz = 0.0;
+            bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+            cfg->jet_count--;
+        }
+    }
+
+    /* Decay lobe particles */
+    for (int i = 0; i < *n; i++) {
+        if (bodies[i].type != BODY_LOBE || bodies[i].mass <= 0.0)
             continue;
         bodies[i].lifetime -= dt;
         if (bodies[i].lifetime <= 0.0) {
             bodies[i].mass = 0.0;
             bodies[i].vx = bodies[i].vy = bodies[i].vz = 0.0;
             bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
-            cfg->jet_count--;
         }
     }
 }
@@ -424,7 +484,7 @@ void quasar_step(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt
     apply_feedback(bodies, *n, cfg);
 
     // 4. Decay expired jet particles
-    decay_jets(bodies, *n, cfg, dt);
+    decay_jets(bodies, n, n_alloc, cfg, dt);
 
     // 4b. Recycle distant jet particles as infalling gas
     recycle_distant_jets(bodies, *n, cfg);
@@ -445,4 +505,10 @@ int quasar_compact(Body *bodies, int n)
         }
     }
     return write;
+}
+
+/* Test wrapper — exposes static decay_jets for unit testing */
+void decay_jets_wrapper(Body *bodies, int *n, int n_alloc, QuasarConfig *cfg, double dt)
+{
+    decay_jets(bodies, n, n_alloc, cfg, dt);
 }
