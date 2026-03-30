@@ -119,15 +119,15 @@ void main()
         delta.x *= u_aspect;
         float dist = length(delta);
 
-        // Einstein ring radius ≈ 4-5x Schwarzschild radius in our projection
-        float r_einstein = r_eh * 4.5;
+        // Einstein ring: thin ring at ~3x Schwarzschild (tighter, subtler)
+        float r_einstein = r_eh * 3.0;
         float ring_dist = abs(dist - r_einstein);
-        float ring_width = r_eh * 0.8;
+        float ring_width = r_eh * 0.3;
         float einstein_ring = exp(-ring_dist * ring_dist / (ring_width * ring_width));
 
-        // Subtle blue-white glow from accumulated lensed starlight
-        vec3 er_color = vec3(0.4, 0.5, 0.8);
-        hdr_color += er_color * einstein_ring * 0.3;
+        // Subtle — should be a hint, not a dominant feature
+        vec3 er_color = vec3(0.3, 0.4, 0.7);
+        hdr_color += er_color * einstein_ring * 0.12;
     }
 
     // Combine scene + bloom

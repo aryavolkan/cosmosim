@@ -526,19 +526,18 @@ int main(int argc, char **argv)
                 // When merged: zoom in to accretion disk
                 float target_dist;
                 if (smbh_sep > 5.0f) {
-                    // Show both galaxies: distance = separation * 1.2 + some padding
-                    target_dist = smbh_sep * 1.2f + 15.0f;
+                    // Show both galaxies: distance = separation * 1.0 + padding
+                    target_dist = smbh_sep * 1.0f + 10.0f;
                 } else {
-                    // Merged or close: hold steady at medium distance
-                    // to show the accretion disk + jets without zooming too far
-                    target_dist = 30.0f;
+                    // Merged: hold close to show accretion disk + jets
+                    target_dist = 25.0f;
                 }
 
-                // Clamp — keep post-merger view from zooming out too far
+                // Tight clamp — never zoom out past 40
                 if (target_dist < 12.0f)
                     target_dist = 12.0f;
-                if (target_dist > 80.0f)
-                    target_dist = 80.0f;
+                if (target_dist > 40.0f)
+                    target_dist = 40.0f;
 
                 // Smooth camera distance
                 render_cam.distance = 0.97f * render_cam.distance + 0.03f * target_dist;

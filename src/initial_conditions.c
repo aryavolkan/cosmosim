@@ -68,7 +68,15 @@ void generate_spiral_galaxy(Body *bodies,
         if (u < 1e-15)
             u = 1e-15;
         double r = -scale_radius * log(1.0 - u * (1.0 - exp(-disk_radius / scale_radius)));
-        double theta = 2.0 * M_PI * rng_uniform();
+        // Logarithmic spiral arm perturbation: 2-arm spiral
+        // Arms wind tighter at larger radii (pitch angle ~15 deg)
+        double base_theta = 2.0 * M_PI * rng_uniform();
+        double pitch = 0.27; // ~15 degrees
+        double arm_phase = log(r / scale_radius + 0.1) / pitch;
+        // Bias theta toward the nearest spiral arm
+        double arm_offset = sin(2.0 * (base_theta - arm_phase));
+        double arm_strength = 0.35 * exp(-r / (disk_radius * 0.8));
+        double theta = base_theta + arm_strength * arm_offset;
 
         bodies[i].x = cx + r * cos(theta);
         bodies[i].y = cy + r * sin(theta);
