@@ -7,6 +7,7 @@
 #include "integrator.h"
 #include "initial_conditions.h"
 #include "quasar.h"
+#include "sph.h"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -874,6 +875,55 @@ static int test_sph_neighbor_count(void)
     return 1;
 }
 
+static int test_sph_density_uniform(void)
+{
+    /* 64 gas particles in a uniform 4x4x4 grid in [-2,2]^3.
+       All densities should be approximately equal. */
+    int n = 64;
+    Body *bodies = calloc(n, sizeof(Body));
+    int idx = 0;
+    for (int ix = 0; ix < 4; ix++) {
+        for (int iy = 0; iy < 4; iy++) {
+            for (int iz = 0; iz < 4; iz++) {
+                bodies[idx].x = -1.5 + ix * 1.0;
+                bodies[idx].y = -1.5 + iy * 1.0;
+                bodies[idx].z = -1.5 + iz * 1.0;
+                bodies[idx].mass = 1.0;
+                bodies[idx].type = BODY_GAS;
+                bodies[idx].internal_energy = 1.0;
+                bodies[idx].smoothing_h = 1.5;
+                idx++;
+            }
+        }
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+    sph_compute_density(bodies, n, pool);
+
+    /* All interior particles should have similar density */
+    double min_rho = 1e30, max_rho = 0.0;
+    int interior_count = 0;
+    for (int i = 0; i < n; i++) {
+        /* Skip edge particles (within 1.0 of boundary) */
+        if (fabs(bodies[i].x) > 1.0 || fabs(bodies[i].y) > 1.0 || fabs(bodies[i].z) > 1.0)
+            continue;
+        interior_count++;
+        if (bodies[i].density < min_rho) min_rho = bodies[i].density;
+        if (bodies[i].density > max_rho) max_rho = bodies[i].density;
+    }
+
+    ASSERT(interior_count >= 4, "should have interior particles");
+    ASSERT(min_rho > 0.0, "density should be positive");
+    /* Interior densities within 30% of each other */
+    ASSERT(max_rho / min_rho < 1.3, "uniform grid density should be roughly equal");
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -924,6 +974,9 @@ int main(void)
 
     // SPH neighbor finding tests
     RUN_TEST(test_sph_neighbor_count);
+
+    // SPH density tests
+    RUN_TEST(test_sph_density_uniform);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
