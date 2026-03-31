@@ -173,8 +173,37 @@ void sph_compute_forces(Body *bodies, int n, const OctreeNode *tree)
     }
 }
 
+/* ── Radiative cooling ─────────────────────────────────────────────────── */
+
 void sph_apply_cooling(Body *bodies, int n, double dt)
 {
-    (void)bodies; (void)n; (void)dt;
-    /* Implemented in Task 5 */
+    /* Bremsstrahlung-approximation: du/dt = -Λ₀ * ρ * sqrt(u)
+       Integrated implicitly to prevent negative energy. */
+    double lambda0 = 0.05; /* tuned so disk forms in ~100 dynamical times */
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (int i = 0; i < n; i++) {
+        if (bodies[i].type != BODY_GAS || bodies[i].mass <= 0.0)
+            continue;
+
+        double u = bodies[i].internal_energy;
+        double rho = bodies[i].density;
+        if (u < 1e-15 || rho < 1e-15)
+            continue;
+
+        /* Implicit Euler: u_new = u / (1 + dt * Λ₀ * ρ * 0.5 / sqrt(u)) */
+        double denom = 1.0 + dt * lambda0 * rho * 0.5 / sqrt(u);
+        double u_new = u / denom;
+
+        /* Temperature floor: 1% of initial thermal energy */
+        double u_min = 0.01;
+        if (u_new < u_min)
+            u_new = u_min;
+
+        bodies[i].internal_energy = u_new;
+        /* Update pressure with new energy */
+        bodies[i].pressure = (SPH_GAMMA - 1.0) * rho * u_new;
+    }
 }

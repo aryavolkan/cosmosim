@@ -1014,6 +1014,34 @@ static int test_star_unaffected_by_sph(void)
     return 1;
 }
 
+/* ---- SPH cooling tests ---- */
+
+static int test_sph_cooling_reduces_energy(void)
+{
+    /* Hot gas should cool over time but not below floor */
+    int n = 5;
+    Body bodies[5];
+    memset(bodies, 0, sizeof(bodies));
+    for (int i = 0; i < n; i++) {
+        bodies[i].x = (double)i;
+        bodies[i].mass = 1.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].internal_energy = 100.0; /* very hot */
+        bodies[i].density = 1.0;
+    }
+
+    double u_before = bodies[0].internal_energy;
+    for (int step = 0; step < 50; step++) {
+        sph_apply_cooling(bodies, n, 0.01);
+    }
+    double u_after = bodies[0].internal_energy;
+
+    ASSERT(u_after < u_before, "cooling should reduce internal energy");
+    ASSERT(u_after > 0.0, "energy should stay positive (floor)");
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -1071,6 +1099,9 @@ int main(void)
     // SPH forces tests
     RUN_TEST(test_sph_pressure_gradient);
     RUN_TEST(test_star_unaffected_by_sph);
+
+    // SPH cooling tests
+    RUN_TEST(test_sph_cooling_reduces_energy);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
