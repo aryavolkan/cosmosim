@@ -187,13 +187,13 @@ int renderer_init(const RendererConfig *rcfg)
     u_camera_pos_loc = glGetUniformLocation(particle_program, "u_camera_pos");
     u_alpha_scale_loc = glGetUniformLocation(particle_program, "u_alpha_scale");
 
-    // VAO/VBO: pos(3) + mass(1) + vel(3) + type(1) = 8 floats
+    // VAO/VBO: pos(3) + mass(1) + vel(3) + type(1) + internal_energy(1) + density(1) = 10 floats
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    int stride = 8 * sizeof(float);
+    int stride = 10 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride, (void *)(3 * sizeof(float)));
@@ -202,6 +202,16 @@ int renderer_init(const RendererConfig *rcfg)
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, (void *)(7 * sizeof(float)));
     glEnableVertexAttribArray(3);
+
+    // Attribute 4: internal_energy (1 float at byte offset 32)
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float),
+                          (void *)(8 * sizeof(float)));
+
+    // Attribute 5: density (1 float at byte offset 36)
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float),
+                          (void *)(9 * sizeof(float)));
 
     glBindVertexArray(0);
 
@@ -327,20 +337,20 @@ void renderer_draw(const Body *bodies,
                    int window_height,
                    const RendererConfig *rcfg)
 {
-    // Ensure upload buffer (8 floats per body)
-    if (n * 8 > upload_buf_capacity) {
-        upload_buf_capacity = n * 8;
+    // Ensure upload buffer (10 floats per body)
+    if (n * 10 > upload_buf_capacity) {
+        upload_buf_capacity = n * 10;
         float *tmp = realloc(upload_buf, upload_buf_capacity * sizeof(float));
         if (tmp)
             upload_buf = tmp;
     }
 
-    // Upload: x, y, z, mass, vx, vy, vz, type (skip dead bodies)
+    // Upload: x, y, z, mass, vx, vy, vz, type, internal_energy, density (skip dead bodies)
     int count = 0;
     for (int i = 0; i < n; i++) {
         if (bodies[i].mass <= 0.0)
             continue;
-        int off = count * 8;
+        int off = count * 10;
         upload_buf[off + 0] = (float)bodies[i].x;
         upload_buf[off + 1] = (float)bodies[i].y;
         upload_buf[off + 2] = (float)bodies[i].z;
@@ -349,6 +359,8 @@ void renderer_draw(const Body *bodies,
         upload_buf[off + 5] = (float)bodies[i].vy;
         upload_buf[off + 6] = (float)bodies[i].vz;
         upload_buf[off + 7] = (float)bodies[i].type;
+        upload_buf[off + 8] = (float)bodies[i].internal_energy;
+        upload_buf[off + 9] = (float)bodies[i].density;
         count++;
     }
 
@@ -364,7 +376,7 @@ void renderer_draw(const Body *bodies,
         float log_lum_sum = 0.0f;
         int lum_count = 0;
         for (int i = 0; i < count; i++) {
-            int off = i * 8;
+            int off = i * 10;
             float dx = upload_buf[off + 0] - cam_x;
             float dy = upload_buf[off + 1] - cam_y;
             float dz = upload_buf[off + 2] - cam_z;
@@ -459,7 +471,7 @@ void renderer_draw(const Body *bodies,
 
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, count * 8 * sizeof(float), upload_buf, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, count * 10 * sizeof(float), upload_buf, GL_STREAM_DRAW);
     glDrawArrays(GL_POINTS, 0, count);
     glBindVertexArray(0);
 

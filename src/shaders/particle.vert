@@ -3,6 +3,8 @@ layout(location = 0) in vec3 a_position;
 layout(location = 1) in float a_mass;
 layout(location = 2) in vec3 a_velocity;
 layout(location = 3) in float a_type;
+layout(location = 4) in float a_internal_energy;
+layout(location = 5) in float a_density;
 
 uniform mat4 u_view;
 uniform mat4 u_projection;
@@ -17,6 +19,8 @@ out vec3 v_velocity;
 out float v_view_depth;
 out float v_temperature;  // 0 = cold, 1 = near SMBH
 out vec3 v_world_pos;     // world-space position for Doppler computation
+out float v_internal_energy;
+out float v_density;
 
 void main()
 {
@@ -27,6 +31,8 @@ void main()
     v_velocity = a_velocity;
     v_view_depth = -view_pos.z;
     v_world_pos = a_position;
+    v_internal_energy = a_internal_energy;
+    v_density = a_density;
 
     // Temperature: proximity to nearest SMBH in world space
     float min_dist = 1e10;
@@ -53,8 +59,12 @@ void main()
     } else if (body_type == 5) {
         // LOBE: diffuse hotspot/cocoon
         base_size = clamp(8.0 + log(a_mass + 1.0) * 3.0, 8.0, 30.0);
+    } else if (body_type == 1) {
+        // GAS: size scales inversely with SPH density (compact where dense)
+        float density_scale = clamp(2.0 / (log(a_density + 1.0) + 1.0), 0.5, 2.0);
+        base_size = clamp(2.0 + log(a_mass + 1.0) * 1.5, 1.0, 15.0) * density_scale;
     } else {
-        // STAR/GAS: mass-based
+        // STAR: mass-based
         base_size = clamp(1.0 + log(a_mass + 1.0) * 2.0, 1.0, 20.0);
     }
 
