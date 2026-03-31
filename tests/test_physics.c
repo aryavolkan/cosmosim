@@ -289,7 +289,7 @@ static int test_energy_conservation(void)
 
     double dt = 0.001;
     for (int i = 0; i < 2000; i++) {
-        integrator_step(bodies, 2, dt, G, softening, 0.0, pool);
+        integrator_step(bodies, 2, dt, G, softening, 0.0, pool, 0);
     }
 
     double E1 = compute_total_energy(bodies, 2, G, softening);
@@ -323,7 +323,7 @@ static int test_momentum_conservation(void)
     }
 
     for (int i = 0; i < 500; i++) {
-        integrator_step(bodies, n, 0.002, G, softening, 0.0, pool);
+        integrator_step(bodies, n, 0.002, G, softening, 0.0, pool, 0);
     }
 
     double px1 = 0, py1 = 0, pz1 = 0;

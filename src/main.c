@@ -212,6 +212,7 @@ int main(int argc, char **argv)
     double accretion_radius = DEFAULT_ACCRETION_RADIUS;
     double jet_speed = DEFAULT_JET_SPEED;
     double feedback_strength = DEFAULT_FEEDBACK_STRENGTH;
+    double gas_fraction = 0.2;
 
     /* Offline render options */
     const char *render_dir = NULL;
@@ -245,6 +246,8 @@ int main(int argc, char **argv)
             jet_speed = atof(argv[++i]);
         } else if (strcmp(argv[i], "--feedback-strength") == 0 && i + 1 < argc) {
             feedback_strength = atof(argv[++i]);
+        } else if (strcmp(argv[i], "--gas-fraction") == 0 && i + 1 < argc) {
+            gas_fraction = atof(argv[++i]);
         } else if (strcmp(argv[i], "--render") == 0 && i + 1 < argc) {
             render_dir = argv[++i];
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -474,7 +477,7 @@ int main(int argc, char **argv)
         for (int frame = 0; frame < render_frames; frame++) {
             /* Physics */
             for (int sub = 0; sub < substeps; sub++) {
-                integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
+                integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool, quasar);
                 if (quasar) {
                     quasar_step(bodies, &current_n, n_alloc, &qcfg, dt);
                 }
@@ -628,7 +631,7 @@ int main(int argc, char **argv)
 
             if (!paused) {
                 for (int sub = 0; sub < substeps; sub++) {
-                    integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
+                    integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool, quasar);
                     if (quasar) {
                         quasar_step(bodies, &current_n, n_alloc, &qcfg, dt);
                     }

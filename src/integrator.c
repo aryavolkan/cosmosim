@@ -1,4 +1,5 @@
 #include "integrator.h"
+#include "sph.h"
 
 void integrator_init_accelerations(
     Body *bodies, int n, double G, double softening, double theta, OctreeNode *pool)
@@ -8,8 +9,14 @@ void integrator_init_accelerations(
     octree_compute_forces(pool, 0, bodies, n, G, softening, theta);
 }
 
-void integrator_step(
-    Body *bodies, int n, double dt, double G, double softening, double theta, OctreeNode *pool)
+void integrator_step(Body *bodies,
+                     int n,
+                     double dt,
+                     double G,
+                     double softening,
+                     double theta,
+                     OctreeNode *pool,
+                     int sph_enabled)
 {
     // Kick (half step) + Drift (full step)
     for (int i = 0; i < n; i++) {
@@ -23,10 +30,16 @@ void integrator_step(
         bodies[i].z += bodies[i].vz * dt;
     }
 
-    // Recompute accelerations
+    // Recompute accelerations (gravity)
     int pool_size = 0;
     octree_build(pool, &pool_size, bodies, n);
     octree_compute_forces(pool, 0, bodies, n, G, softening, theta);
+
+    // SPH: density + pressure forces (added on top of gravity)
+    if (sph_enabled) {
+        sph_compute_density(bodies, n, pool);
+        sph_compute_forces(bodies, n, pool);
+    }
 
     // Kick (half step)
     for (int i = 0; i < n; i++) {
@@ -35,5 +48,10 @@ void integrator_step(
         bodies[i].vx += 0.5 * bodies[i].ax * dt;
         bodies[i].vy += 0.5 * bodies[i].ay * dt;
         bodies[i].vz += 0.5 * bodies[i].az * dt;
+    }
+
+    // SPH cooling (after velocity update)
+    if (sph_enabled) {
+        sph_apply_cooling(bodies, n, dt);
     }
 }
