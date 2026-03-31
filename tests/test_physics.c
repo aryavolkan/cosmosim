@@ -924,6 +924,96 @@ static int test_sph_density_uniform(void)
     return 1;
 }
 
+static int test_sph_pressure_gradient(void)
+{
+    /* Dense gas on left (x<0), sparse on right (x>0).
+       After one SPH force step, interface particles should
+       accelerate from dense toward sparse (positive ax). */
+    int n = 40;
+    Body *bodies = calloc(n, sizeof(Body));
+
+    /* Dense region: 30 particles in [-3, 0] */
+    for (int i = 0; i < 30; i++) {
+        bodies[i].x = -3.0 + (double)i * 0.1;
+        bodies[i].y = 0.0;
+        bodies[i].z = 0.0;
+        bodies[i].mass = 1.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].internal_energy = 1.0;
+        bodies[i].smoothing_h = 0.5;
+    }
+    /* Sparse region: 10 particles in [0, 3] */
+    for (int i = 30; i < 40; i++) {
+        bodies[i].x = (double)(i - 30) * 0.3;
+        bodies[i].y = 0.0;
+        bodies[i].z = 0.0;
+        bodies[i].mass = 1.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].internal_energy = 1.0;
+        bodies[i].smoothing_h = 0.5;
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+    sph_compute_density(bodies, n, pool);
+
+    /* Zero accelerations before computing SPH forces */
+    for (int i = 0; i < n; i++)
+        bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+
+    sph_compute_forces(bodies, n, pool);
+
+    /* Particles near the interface (around x=0) should be pushed rightward
+       (from dense to sparse) — positive ax */
+    int found_positive = 0;
+    for (int i = 25; i < 35; i++) {
+        if (bodies[i].ax > 0.0)
+            found_positive++;
+    }
+    ASSERT(found_positive > 0, "pressure should push particles from dense to sparse (+x)");
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
+static int test_star_unaffected_by_sph(void)
+{
+    /* Stars mixed with gas should have zero SPH acceleration */
+    int n = 20;
+    Body *bodies = calloc(n, sizeof(Body));
+    for (int i = 0; i < n; i++) {
+        bodies[i].x = (double)i * 0.5;
+        bodies[i].mass = 1.0;
+        bodies[i].type = (i % 2 == 0) ? BODY_GAS : BODY_STAR;
+        bodies[i].internal_energy = 1.0;
+        bodies[i].smoothing_h = 2.0;
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+    sph_compute_density(bodies, n, pool);
+
+    for (int i = 0; i < n; i++)
+        bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+    sph_compute_forces(bodies, n, pool);
+
+    /* Stars should have zero SPH acceleration */
+    for (int i = 0; i < n; i++) {
+        if (bodies[i].type == BODY_STAR) {
+            ASSERT_NEAR(bodies[i].ax, 0.0, 1e-12, "star ax should be zero from SPH");
+            ASSERT_NEAR(bodies[i].ay, 0.0, 1e-12, "star ay should be zero from SPH");
+            ASSERT_NEAR(bodies[i].az, 0.0, 1e-12, "star az should be zero from SPH");
+        }
+    }
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -977,6 +1067,10 @@ int main(void)
 
     // SPH density tests
     RUN_TEST(test_sph_density_uniform);
+
+    // SPH forces tests
+    RUN_TEST(test_sph_pressure_gradient);
+    RUN_TEST(test_star_unaffected_by_sph);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
