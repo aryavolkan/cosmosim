@@ -833,6 +833,47 @@ static int test_lobe_spawns_on_jet_death(void)
     return 1;
 }
 
+static int test_sph_neighbor_count(void)
+{
+    /* Place 200 particles in a uniform cube [-5, 5]^3.
+       Finding neighbors within radius 3.0 of center should return
+       a reasonable count (not 0, not all 200). */
+    int n = 200;
+    Body *bodies = calloc(n, sizeof(Body));
+    for (int i = 0; i < n; i++) {
+        bodies[i].x = ((double)(i % 10) / 9.0) * 10.0 - 5.0;
+        bodies[i].y = ((double)((i / 10) % 10) / 9.0) * 10.0 - 5.0;
+        bodies[i].z = ((double)(i / 100) / 1.0) * 2.0 - 1.0;
+        bodies[i].mass = 1.0;
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+
+    int neighbors[200];
+    int count = octree_find_neighbors(pool, 0, bodies, n,
+                                       0.0, 0.0, 0.0, 3.0,
+                                       neighbors, 200);
+
+    ASSERT(count > 5, "should find several neighbors near center");
+    ASSERT(count < 150, "should not find all particles as neighbors");
+
+    /* Verify all returned neighbors are actually within radius */
+    for (int i = 0; i < count; i++) {
+        int idx = neighbors[i];
+        double dx = bodies[idx].x;
+        double dy = bodies[idx].y;
+        double dz = bodies[idx].z;
+        double dist = sqrt(dx * dx + dy * dy + dz * dz);
+        ASSERT(dist <= 3.0 + 1e-10, "neighbor should be within search radius");
+    }
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -880,6 +921,9 @@ int main(void)
     RUN_TEST(test_jet_ring_spawns_multiple_particles);
     RUN_TEST(test_jet_approaching_vs_receding_velocity);
     RUN_TEST(test_lobe_spawns_on_jet_death);
+
+    // SPH neighbor finding tests
+    RUN_TEST(test_sph_neighbor_count);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

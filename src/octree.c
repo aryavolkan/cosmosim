@@ -232,3 +232,71 @@ void octree_compute_forces(
         compute_force_on_body(pool, root, &bodies[i], i, G, softening_sq, theta);
     }
 }
+
+static void find_neighbors_recursive(const OctreeNode *pool,
+                                     int node_idx,
+                                     const Body *bodies,
+                                     double cx,
+                                     double cy,
+                                     double cz,
+                                     double radius,
+                                     double radius_sq,
+                                     int *neighbor_buf,
+                                     int *count,
+                                     int buf_capacity)
+{
+    const OctreeNode *node = &pool[node_idx];
+
+    /* Check if this node's bounding box intersects the search sphere.
+       Box spans [center - half_size, center + half_size] in each axis. */
+    double dx = fmax(0.0, fabs(cx - node->center_x) - node->half_size);
+    double dy = fmax(0.0, fabs(cy - node->center_y) - node->half_size);
+    double dz = fmax(0.0, fabs(cz - node->center_z) - node->half_size);
+    if (dx * dx + dy * dy + dz * dz > radius_sq)
+        return;
+
+    /* Leaf node: check the single body */
+    if (node->body_index >= 0) {
+        if (*count >= buf_capacity)
+            return;
+        const Body *b = &bodies[node->body_index];
+        if (b->mass <= 0.0)
+            return;
+        double bx = b->x - cx;
+        double by = b->y - cy;
+        double bz = b->z - cz;
+        if (bx * bx + by * by + bz * bz <= radius_sq) {
+            neighbor_buf[*count] = node->body_index;
+            (*count)++;
+        }
+        return;
+    }
+
+    /* Internal node: recurse into children */
+    for (int c = 0; c < 8; c++) {
+        if (node->children[c] >= 0 && *count < buf_capacity) {
+            find_neighbors_recursive(pool, node->children[c], bodies,
+                                     cx, cy, cz, radius, radius_sq,
+                                     neighbor_buf, count, buf_capacity);
+        }
+    }
+}
+
+int octree_find_neighbors(const OctreeNode *pool,
+                          int root,
+                          const Body *bodies,
+                          int n,
+                          double cx,
+                          double cy,
+                          double cz,
+                          double radius,
+                          int *neighbor_buf,
+                          int buf_capacity)
+{
+    (void)n;
+    int count = 0;
+    find_neighbors_recursive(pool, root, bodies, cx, cy, cz,
+                             radius, radius * radius,
+                             neighbor_buf, &count, buf_capacity);
+    return count;
+}
