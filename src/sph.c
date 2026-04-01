@@ -10,6 +10,8 @@
 
 static double kernel_W(double r, double h)
 {
+    if (h < 1e-10)
+        return 0.0;
     double q = r / h;
     if (q > 1.0)
         return 0.0;
@@ -24,6 +26,8 @@ static double kernel_W(double r, double h)
 
 static double kernel_dWdr(double r, double h)
 {
+    if (h < 1e-10)
+        return 0.0;
     double q = r / h;
     if (q > 1.0 || r < 1e-15)
         return 0.0;
@@ -50,9 +54,16 @@ void sph_compute_density(Body *bodies, int n, const OctreeNode *tree)
             continue;
 
         double h = bodies[i].smoothing_h;
-        int nn = octree_find_neighbors(tree, 0, bodies, n,
-                                       bodies[i].x, bodies[i].y, bodies[i].z,
-                                       h, neighbor_buf, SPH_MAX_NEIGHBORS);
+        int nn = octree_find_neighbors(tree,
+                                       0,
+                                       bodies,
+                                       n,
+                                       bodies[i].x,
+                                       bodies[i].y,
+                                       bodies[i].z,
+                                       h,
+                                       neighbor_buf,
+                                       SPH_MAX_NEIGHBORS);
 
         /* Adaptive smoothing: adjust h to get ~TARGET neighbors */
         if (nn < 20 && h < 50.0)
@@ -73,7 +84,7 @@ void sph_compute_density(Body *bodies, int n, const OctreeNode *tree)
             rho += bodies[j].mass * kernel_W(r, h);
         }
 
-        if (rho < 1e-15)
+        if (rho < 1e-15 || isnan(rho))
             rho = 1e-15;
         bodies[i].density = rho;
 
@@ -106,9 +117,16 @@ void sph_compute_forces(Body *bodies, int n, const OctreeNode *tree)
             u_i = 1e-15;
         double c_i = sqrt(SPH_GAMMA * P_i / (rho_i + 1e-15));
 
-        int nn = octree_find_neighbors(tree, 0, bodies, n,
-                                       bodies[i].x, bodies[i].y, bodies[i].z,
-                                       h_i, neighbor_buf, SPH_MAX_NEIGHBORS);
+        int nn = octree_find_neighbors(tree,
+                                       0,
+                                       bodies,
+                                       n,
+                                       bodies[i].x,
+                                       bodies[i].y,
+                                       bodies[i].z,
+                                       h_i,
+                                       neighbor_buf,
+                                       SPH_MAX_NEIGHBORS);
 
         double ax_sph = 0.0, ay_sph = 0.0, az_sph = 0.0;
 
@@ -159,17 +177,25 @@ void sph_compute_forces(Body *bodies, int n, const OctreeNode *tree)
             double dWdz = dWdr * dz / r;
 
             /* Pressure gradient + viscosity */
-            double factor =
-                bodies[j].mass * (P_i / (rho_i * rho_i + 1e-15) + P_j / (rho_j * rho_j + 1e-15) + Pi_ij);
+            double factor = bodies[j].mass *
+                            (P_i / (rho_i * rho_i + 1e-15) + P_j / (rho_j * rho_j + 1e-15) + Pi_ij);
 
             ax_sph -= factor * dWdx;
             ay_sph -= factor * dWdy;
             az_sph -= factor * dWdz;
         }
 
-        bodies[i].ax += ax_sph;
-        bodies[i].ay += ay_sph;
-        bodies[i].az += az_sph;
+        /* NaN guard + scale down to prevent blowout */
+        if (isnan(ax_sph))
+            ax_sph = 0.0;
+        if (isnan(ay_sph))
+            ay_sph = 0.0;
+        if (isnan(az_sph))
+            az_sph = 0.0;
+        double sph_scale = 0.1;
+        bodies[i].ax += ax_sph * sph_scale;
+        bodies[i].ay += ay_sph * sph_scale;
+        bodies[i].az += az_sph * sph_scale;
     }
 }
 

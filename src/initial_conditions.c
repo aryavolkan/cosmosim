@@ -188,8 +188,7 @@ void generate_quasar_galaxy(Body *bodies,
                 r = 1e-10;
             double m_enc = galaxy_mass * (1.0 - exp(-r / (disk_radius / 4.0)));
             double v_circ_local = sqrt(m_enc / r);
-            bodies[i].internal_energy =
-                0.5 * v_circ_local * v_circ_local / (SPH_GAMMA - 1.0);
+            bodies[i].internal_energy = 0.5 * v_circ_local * v_circ_local / (SPH_GAMMA - 1.0);
             bodies[i].smoothing_h = mean_spacing * 2.0;
         }
     }

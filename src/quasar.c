@@ -166,6 +166,14 @@ process_accretion(Body *bodies, int n, const QuasarConfig *cfg, double dt, doubl
 
             if (r_circ > cfg->isco_radius && bodies[i].type != BODY_GAS) {
                 bodies[i].type = BODY_GAS;
+                /* Initialize SPH fields for newly converted gas */
+                if (bodies[i].smoothing_h < 1e-10)
+                    bodies[i].smoothing_h = cfg->accretion_radius * 0.3;
+                if (bodies[i].internal_energy < 1e-10) {
+                    double v2 = bodies[i].vx * bodies[i].vx + bodies[i].vy * bodies[i].vy +
+                                bodies[i].vz * bodies[i].vz;
+                    bodies[i].internal_energy = 0.001 * v2 + 0.01;
+                }
             }
 
             if (bodies[i].type == BODY_GAS) {
@@ -455,6 +463,13 @@ static void recycle_distant_jets(Body *bodies, int n, QuasarConfig *cfg)
         bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
         bodies[i].type = BODY_GAS;
         bodies[i].lifetime = 0.0;
+        /* Initialize SPH fields for recycled gas */
+        bodies[i].smoothing_h = cfg->accretion_radius * 0.3;
+        double v2 =
+            bodies[i].vx * bodies[i].vx + bodies[i].vy * bodies[i].vy + bodies[i].vz * bodies[i].vz;
+        bodies[i].internal_energy = 0.001 * v2 + 0.01;
+        bodies[i].density = 0.0;
+        bodies[i].pressure = 0.0;
         cfg->jet_count--;
     }
 }

@@ -4,9 +4,9 @@
 #include "body.h"
 #include "octree.h"
 
-#define SPH_GAMMA (5.0 / 3.0)
+#define SPH_GAMMA            (5.0 / 3.0)
 #define SPH_TARGET_NEIGHBORS 32
-#define SPH_MAX_NEIGHBORS 128
+#define SPH_MAX_NEIGHBORS    128
 
 /* Compute density and pressure for all BODY_GAS particles using octree. */
 void sph_compute_density(Body *bodies, int n, const OctreeNode *tree);

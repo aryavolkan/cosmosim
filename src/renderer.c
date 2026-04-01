@@ -205,13 +205,13 @@ int renderer_init(const RendererConfig *rcfg)
 
     // Attribute 4: internal_energy (1 float at byte offset 32)
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float),
-                          (void *)(8 * sizeof(float)));
+    glVertexAttribPointer(
+        4, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float), (void *)(8 * sizeof(float)));
 
     // Attribute 5: density (1 float at byte offset 36)
     glEnableVertexAttribArray(5);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float),
-                          (void *)(9 * sizeof(float)));
+    glVertexAttribPointer(
+        5, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float), (void *)(9 * sizeof(float)));
 
     glBindVertexArray(0);
 
@@ -370,11 +370,8 @@ void renderer_draw(const Body *bodies,
         float cam_y = cam->target_y + cam->distance * cosf(cam->elevation) * sinf(cam->azimuth);
         float cam_z = cam->target_z + cam->distance * sinf(cam->elevation);
 
-        // Use log-average luminance (geometric mean) for exposure.
-        // This handles dense particle fields much better than arithmetic mean —
-        // a few bright particles don't blow out the entire scene.
-        float log_lum_sum = 0.0f;
-        int lum_count = 0;
+        // Simple arithmetic-mean luminance for exposure
+        float total_lum = 0.0f;
         for (int i = 0; i < count; i++) {
             int off = i * 10;
             float dx = upload_buf[off + 0] - cam_x;
@@ -382,24 +379,21 @@ void renderer_draw(const Body *bodies,
             float dz = upload_buf[off + 2] - cam_z;
             float dist_sq = dx * dx + dy * dy + dz * dz + 1.0f;
             float mass = upload_buf[off + 3];
-            float lum = mass / dist_sq;
-            if (lum > 1e-6f) {
-                log_lum_sum += logf(lum + 1e-6f);
-                lum_count++;
-            }
+            total_lum += mass / dist_sq;
         }
-        float avg_lum = lum_count > 0 ? expf(log_lum_sum / (float)lum_count) : 0.001f;
-        if (avg_lum < 0.001f)
-            avg_lum = 0.001f;
+        /* Use total luminance (not average) since additive blending
+           accumulates brightness from all overlapping particles */
+        if (total_lum < 0.001f)
+            total_lum = 0.001f;
 
-        float target_exposure = 0.18f / avg_lum;
-        if (target_exposure < 0.1f)
-            target_exposure = 0.1f;
-        if (target_exposure > 8.0f)
-            target_exposure = 8.0f;
+        float target_exposure = 0.18f / total_lum;
+        if (target_exposure < 0.001f)
+            target_exposure = 0.001f;
+        if (target_exposure > 10.0f)
+            target_exposure = 10.0f;
 
         // Cast away const for exposure update (exposure is mutable render state)
-        ((RendererConfig *)rcfg)->exposure = 0.9f * rcfg->exposure + 0.1f * target_exposure;
+        ((RendererConfig *)rcfg)->exposure = 0.7f * rcfg->exposure + 0.3f * target_exposure;
     }
 
     // HDR FBO setup
@@ -442,17 +436,9 @@ void renderer_draw(const Body *bodies,
         glUniform3f(u_camera_pos_loc, eye_x, eye_y, eye_z);
 
     // Density-based alpha scale: reduce particle alpha when many particles visible
-    // to prevent additive blending from blowing out dense post-merger scenes.
-    // Use sqrt scaling: alpha = sqrt(5000/N) — gentle enough to keep particles
-    // visible while preventing blowout in dense regions.
+    // Alpha scale: always 1.0 — exposure handles brightness adaptation
     if (u_alpha_scale_loc >= 0) {
-        float alpha_s = 1.0f;
-        if (count > 5000) {
-            alpha_s = sqrtf(5000.0f / (float)count);
-            if (alpha_s < 0.05f)
-                alpha_s = 0.05f;
-        }
-        glUniform1f(u_alpha_scale_loc, alpha_s);
+        glUniform1f(u_alpha_scale_loc, 1.0f);
     }
 
     // Pass all SMBH world positions for per-particle temperature (dust heating)

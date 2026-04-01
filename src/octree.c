@@ -275,9 +275,17 @@ static void find_neighbors_recursive(const OctreeNode *pool,
     /* Internal node: recurse into children */
     for (int c = 0; c < 8; c++) {
         if (node->children[c] >= 0 && *count < buf_capacity) {
-            find_neighbors_recursive(pool, node->children[c], bodies,
-                                     cx, cy, cz, radius, radius_sq,
-                                     neighbor_buf, count, buf_capacity);
+            find_neighbors_recursive(pool,
+                                     node->children[c],
+                                     bodies,
+                                     cx,
+                                     cy,
+                                     cz,
+                                     radius,
+                                     radius_sq,
+                                     neighbor_buf,
+                                     count,
+                                     buf_capacity);
         }
     }
 }
@@ -295,8 +303,16 @@ int octree_find_neighbors(const OctreeNode *pool,
 {
     (void)n;
     int count = 0;
-    find_neighbors_recursive(pool, root, bodies, cx, cy, cz,
-                             radius, radius * radius,
-                             neighbor_buf, &count, buf_capacity);
+    find_neighbors_recursive(pool,
+                             root,
+                             bodies,
+                             cx,
+                             cy,
+                             cz,
+                             radius,
+                             radius * radius,
+                             neighbor_buf,
+                             &count,
+                             buf_capacity);
     return count;
 }

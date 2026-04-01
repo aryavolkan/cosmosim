@@ -365,7 +365,7 @@ int main(int argc, char **argv)
     rcfg.hdr_enabled = quasar || render_dir;
     rcfg.bloom_iterations = (render_dir || high_fidelity) ? 4 : 2;
     rcfg.lensing_samples = (render_dir || high_fidelity) ? 4 : 1;
-    rcfg.exposure = 1.0f;
+    rcfg.exposure = 0.05f; /* start low — ramps up quickly if scene is dim */
 
     if (renderer_init(&rcfg) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
