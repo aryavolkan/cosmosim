@@ -187,13 +187,13 @@ int renderer_init(const RendererConfig *rcfg)
     u_camera_pos_loc = glGetUniformLocation(particle_program, "u_camera_pos");
     u_alpha_scale_loc = glGetUniformLocation(particle_program, "u_alpha_scale");
 
-    // VAO/VBO: pos(3) + mass(1) + vel(3) + type(1) = 8 floats
+    // VAO/VBO: pos(3) + mass(1) + vel(3) + type(1) + internal_energy(1) + density(1) = 10 floats
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-    int stride = 8 * sizeof(float);
+    int stride = 10 * sizeof(float);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, stride, (void *)(3 * sizeof(float)));
@@ -202,6 +202,16 @@ int renderer_init(const RendererConfig *rcfg)
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, (void *)(7 * sizeof(float)));
     glEnableVertexAttribArray(3);
+
+    // Attribute 4: internal_energy (1 float at byte offset 32)
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(
+        4, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float), (void *)(8 * sizeof(float)));
+
+    // Attribute 5: density (1 float at byte offset 36)
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(
+        5, 1, GL_FLOAT, GL_FALSE, 10 * sizeof(float), (void *)(9 * sizeof(float)));
 
     glBindVertexArray(0);
 
@@ -327,20 +337,20 @@ void renderer_draw(const Body *bodies,
                    int window_height,
                    const RendererConfig *rcfg)
 {
-    // Ensure upload buffer (8 floats per body)
-    if (n * 8 > upload_buf_capacity) {
-        upload_buf_capacity = n * 8;
+    // Ensure upload buffer (10 floats per body)
+    if (n * 10 > upload_buf_capacity) {
+        upload_buf_capacity = n * 10;
         float *tmp = realloc(upload_buf, upload_buf_capacity * sizeof(float));
         if (tmp)
             upload_buf = tmp;
     }
 
-    // Upload: x, y, z, mass, vx, vy, vz, type (skip dead bodies)
+    // Upload: x, y, z, mass, vx, vy, vz, type, internal_energy, density (skip dead bodies)
     int count = 0;
     for (int i = 0; i < n; i++) {
         if (bodies[i].mass <= 0.0)
             continue;
-        int off = count * 8;
+        int off = count * 10;
         upload_buf[off + 0] = (float)bodies[i].x;
         upload_buf[off + 1] = (float)bodies[i].y;
         upload_buf[off + 2] = (float)bodies[i].z;
@@ -349,6 +359,8 @@ void renderer_draw(const Body *bodies,
         upload_buf[off + 5] = (float)bodies[i].vy;
         upload_buf[off + 6] = (float)bodies[i].vz;
         upload_buf[off + 7] = (float)bodies[i].type;
+        upload_buf[off + 8] = (float)bodies[i].internal_energy;
+        upload_buf[off + 9] = (float)bodies[i].density;
         count++;
     }
 
@@ -358,36 +370,30 @@ void renderer_draw(const Body *bodies,
         float cam_y = cam->target_y + cam->distance * cosf(cam->elevation) * sinf(cam->azimuth);
         float cam_z = cam->target_z + cam->distance * sinf(cam->elevation);
 
-        // Use log-average luminance (geometric mean) for exposure.
-        // This handles dense particle fields much better than arithmetic mean —
-        // a few bright particles don't blow out the entire scene.
-        float log_lum_sum = 0.0f;
-        int lum_count = 0;
+        // Simple arithmetic-mean luminance for exposure
+        float total_lum = 0.0f;
         for (int i = 0; i < count; i++) {
-            int off = i * 8;
+            int off = i * 10;
             float dx = upload_buf[off + 0] - cam_x;
             float dy = upload_buf[off + 1] - cam_y;
             float dz = upload_buf[off + 2] - cam_z;
             float dist_sq = dx * dx + dy * dy + dz * dz + 1.0f;
             float mass = upload_buf[off + 3];
-            float lum = mass / dist_sq;
-            if (lum > 1e-6f) {
-                log_lum_sum += logf(lum + 1e-6f);
-                lum_count++;
-            }
+            total_lum += mass / dist_sq;
         }
-        float avg_lum = lum_count > 0 ? expf(log_lum_sum / (float)lum_count) : 0.001f;
-        if (avg_lum < 0.001f)
-            avg_lum = 0.001f;
+        /* Use total luminance (not average) since additive blending
+           accumulates brightness from all overlapping particles */
+        if (total_lum < 0.001f)
+            total_lum = 0.001f;
 
-        float target_exposure = 0.18f / avg_lum;
-        if (target_exposure < 0.1f)
-            target_exposure = 0.1f;
-        if (target_exposure > 8.0f)
-            target_exposure = 8.0f;
+        float target_exposure = 0.18f / total_lum;
+        if (target_exposure < 0.001f)
+            target_exposure = 0.001f;
+        if (target_exposure > 10.0f)
+            target_exposure = 10.0f;
 
         // Cast away const for exposure update (exposure is mutable render state)
-        ((RendererConfig *)rcfg)->exposure = 0.9f * rcfg->exposure + 0.1f * target_exposure;
+        ((RendererConfig *)rcfg)->exposure = 0.7f * rcfg->exposure + 0.3f * target_exposure;
     }
 
     // HDR FBO setup
@@ -430,17 +436,9 @@ void renderer_draw(const Body *bodies,
         glUniform3f(u_camera_pos_loc, eye_x, eye_y, eye_z);
 
     // Density-based alpha scale: reduce particle alpha when many particles visible
-    // to prevent additive blending from blowing out dense post-merger scenes.
-    // Use sqrt scaling: alpha = sqrt(5000/N) — gentle enough to keep particles
-    // visible while preventing blowout in dense regions.
+    // Alpha scale: always 1.0 — exposure handles brightness adaptation
     if (u_alpha_scale_loc >= 0) {
-        float alpha_s = 1.0f;
-        if (count > 5000) {
-            alpha_s = sqrtf(5000.0f / (float)count);
-            if (alpha_s < 0.05f)
-                alpha_s = 0.05f;
-        }
-        glUniform1f(u_alpha_scale_loc, alpha_s);
+        glUniform1f(u_alpha_scale_loc, 1.0f);
     }
 
     // Pass all SMBH world positions for per-particle temperature (dust heating)
@@ -459,7 +457,7 @@ void renderer_draw(const Body *bodies,
 
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, count * 8 * sizeof(float), upload_buf, GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, count * 10 * sizeof(float), upload_buf, GL_STREAM_DRAW);
     glDrawArrays(GL_POINTS, 0, count);
     glBindVertexArray(0);
 

@@ -7,6 +7,7 @@
 #include "integrator.h"
 #include "initial_conditions.h"
 #include "quasar.h"
+#include "sph.h"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -288,7 +289,7 @@ static int test_energy_conservation(void)
 
     double dt = 0.001;
     for (int i = 0; i < 2000; i++) {
-        integrator_step(bodies, 2, dt, G, softening, 0.0, pool);
+        integrator_step(bodies, 2, dt, G, softening, 0.0, pool, 0);
     }
 
     double E1 = compute_total_energy(bodies, 2, G, softening);
@@ -322,7 +323,7 @@ static int test_momentum_conservation(void)
     }
 
     for (int i = 0; i < 500; i++) {
-        integrator_step(bodies, n, 0.002, G, softening, 0.0, pool);
+        integrator_step(bodies, n, 0.002, G, softening, 0.0, pool, 0);
     }
 
     double px1 = 0, py1 = 0, pz1 = 0;
@@ -833,6 +834,214 @@ static int test_lobe_spawns_on_jet_death(void)
     return 1;
 }
 
+static int test_sph_neighbor_count(void)
+{
+    /* Place 200 particles in a uniform cube [-5, 5]^3.
+       Finding neighbors within radius 3.0 of center should return
+       a reasonable count (not 0, not all 200). */
+    int n = 200;
+    Body *bodies = calloc(n, sizeof(Body));
+    for (int i = 0; i < n; i++) {
+        bodies[i].x = ((double)(i % 10) / 9.0) * 10.0 - 5.0;
+        bodies[i].y = ((double)((i / 10) % 10) / 9.0) * 10.0 - 5.0;
+        bodies[i].z = ((double)(i / 100) / 1.0) * 2.0 - 1.0;
+        bodies[i].mass = 1.0;
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+
+    int neighbors[200];
+    int count = octree_find_neighbors(pool, 0, bodies, n,
+                                       0.0, 0.0, 0.0, 3.0,
+                                       neighbors, 200);
+
+    ASSERT(count > 5, "should find several neighbors near center");
+    ASSERT(count < 150, "should not find all particles as neighbors");
+
+    /* Verify all returned neighbors are actually within radius */
+    for (int i = 0; i < count; i++) {
+        int idx = neighbors[i];
+        double dx = bodies[idx].x;
+        double dy = bodies[idx].y;
+        double dz = bodies[idx].z;
+        double dist = sqrt(dx * dx + dy * dy + dz * dz);
+        ASSERT(dist <= 3.0 + 1e-10, "neighbor should be within search radius");
+    }
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
+static int test_sph_density_uniform(void)
+{
+    /* 64 gas particles in a uniform 4x4x4 grid in [-2,2]^3.
+       All densities should be approximately equal. */
+    int n = 64;
+    Body *bodies = calloc(n, sizeof(Body));
+    int idx = 0;
+    for (int ix = 0; ix < 4; ix++) {
+        for (int iy = 0; iy < 4; iy++) {
+            for (int iz = 0; iz < 4; iz++) {
+                bodies[idx].x = -1.5 + ix * 1.0;
+                bodies[idx].y = -1.5 + iy * 1.0;
+                bodies[idx].z = -1.5 + iz * 1.0;
+                bodies[idx].mass = 1.0;
+                bodies[idx].type = BODY_GAS;
+                bodies[idx].internal_energy = 1.0;
+                bodies[idx].smoothing_h = 1.5;
+                idx++;
+            }
+        }
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+    sph_compute_density(bodies, n, pool);
+
+    /* All interior particles should have similar density */
+    double min_rho = 1e30, max_rho = 0.0;
+    int interior_count = 0;
+    for (int i = 0; i < n; i++) {
+        /* Skip edge particles (within 1.0 of boundary) */
+        if (fabs(bodies[i].x) > 1.0 || fabs(bodies[i].y) > 1.0 || fabs(bodies[i].z) > 1.0)
+            continue;
+        interior_count++;
+        if (bodies[i].density < min_rho) min_rho = bodies[i].density;
+        if (bodies[i].density > max_rho) max_rho = bodies[i].density;
+    }
+
+    ASSERT(interior_count >= 4, "should have interior particles");
+    ASSERT(min_rho > 0.0, "density should be positive");
+    /* Interior densities within 30% of each other */
+    ASSERT(max_rho / min_rho < 1.3, "uniform grid density should be roughly equal");
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
+static int test_sph_pressure_gradient(void)
+{
+    /* Dense gas on left (x<0), sparse on right (x>0).
+       After one SPH force step, interface particles should
+       accelerate from dense toward sparse (positive ax). */
+    int n = 40;
+    Body *bodies = calloc(n, sizeof(Body));
+
+    /* Dense region: 30 particles in [-3, 0] */
+    for (int i = 0; i < 30; i++) {
+        bodies[i].x = -3.0 + (double)i * 0.1;
+        bodies[i].y = 0.0;
+        bodies[i].z = 0.0;
+        bodies[i].mass = 1.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].internal_energy = 1.0;
+        bodies[i].smoothing_h = 0.5;
+    }
+    /* Sparse region: 10 particles in [0, 3] */
+    for (int i = 30; i < 40; i++) {
+        bodies[i].x = (double)(i - 30) * 0.3;
+        bodies[i].y = 0.0;
+        bodies[i].z = 0.0;
+        bodies[i].mass = 1.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].internal_energy = 1.0;
+        bodies[i].smoothing_h = 0.5;
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+    sph_compute_density(bodies, n, pool);
+
+    /* Zero accelerations before computing SPH forces */
+    for (int i = 0; i < n; i++)
+        bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+
+    sph_compute_forces(bodies, n, pool);
+
+    /* Particles near the interface (around x=0) should be pushed rightward
+       (from dense to sparse) — positive ax */
+    int found_positive = 0;
+    for (int i = 25; i < 35; i++) {
+        if (bodies[i].ax > 0.0)
+            found_positive++;
+    }
+    ASSERT(found_positive > 0, "pressure should push particles from dense to sparse (+x)");
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
+static int test_star_unaffected_by_sph(void)
+{
+    /* Stars mixed with gas should have zero SPH acceleration */
+    int n = 20;
+    Body *bodies = calloc(n, sizeof(Body));
+    for (int i = 0; i < n; i++) {
+        bodies[i].x = (double)i * 0.5;
+        bodies[i].mass = 1.0;
+        bodies[i].type = (i % 2 == 0) ? BODY_GAS : BODY_STAR;
+        bodies[i].internal_energy = 1.0;
+        bodies[i].smoothing_h = 2.0;
+    }
+
+    OctreeNode *pool = malloc(8 * n * sizeof(OctreeNode));
+    int pool_size = 0;
+    octree_build(pool, &pool_size, bodies, n);
+    sph_compute_density(bodies, n, pool);
+
+    for (int i = 0; i < n; i++)
+        bodies[i].ax = bodies[i].ay = bodies[i].az = 0.0;
+    sph_compute_forces(bodies, n, pool);
+
+    /* Stars should have zero SPH acceleration */
+    for (int i = 0; i < n; i++) {
+        if (bodies[i].type == BODY_STAR) {
+            ASSERT_NEAR(bodies[i].ax, 0.0, 1e-12, "star ax should be zero from SPH");
+            ASSERT_NEAR(bodies[i].ay, 0.0, 1e-12, "star ay should be zero from SPH");
+            ASSERT_NEAR(bodies[i].az, 0.0, 1e-12, "star az should be zero from SPH");
+        }
+    }
+
+    free(pool);
+    free(bodies);
+    return 1;
+}
+
+/* ---- SPH cooling tests ---- */
+
+static int test_sph_cooling_reduces_energy(void)
+{
+    /* Hot gas should cool over time but not below floor */
+    int n = 5;
+    Body bodies[5];
+    memset(bodies, 0, sizeof(bodies));
+    for (int i = 0; i < n; i++) {
+        bodies[i].x = (double)i;
+        bodies[i].mass = 1.0;
+        bodies[i].type = BODY_GAS;
+        bodies[i].internal_energy = 100.0; /* very hot */
+        bodies[i].density = 1.0;
+    }
+
+    double u_before = bodies[0].internal_energy;
+    for (int step = 0; step < 50; step++) {
+        sph_apply_cooling(bodies, n, 0.01);
+    }
+    double u_after = bodies[0].internal_energy;
+
+    ASSERT(u_after < u_before, "cooling should reduce internal energy");
+    ASSERT(u_after > 0.0, "energy should stay positive (floor)");
+
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -880,6 +1089,19 @@ int main(void)
     RUN_TEST(test_jet_ring_spawns_multiple_particles);
     RUN_TEST(test_jet_approaching_vs_receding_velocity);
     RUN_TEST(test_lobe_spawns_on_jet_death);
+
+    // SPH neighbor finding tests
+    RUN_TEST(test_sph_neighbor_count);
+
+    // SPH density tests
+    RUN_TEST(test_sph_density_uniform);
+
+    // SPH forces tests
+    RUN_TEST(test_sph_pressure_gradient);
+    RUN_TEST(test_star_unaffected_by_sph);
+
+    // SPH cooling tests
+    RUN_TEST(test_sph_cooling_reduces_energy);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

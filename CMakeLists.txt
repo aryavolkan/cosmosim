@@ -42,6 +42,7 @@ add_library(cosmosim_physics STATIC
     src/integrator.c
     src/initial_conditions.c
     src/quasar.c
+    src/sph.c
 )
 target_include_directories(cosmosim_physics PUBLIC src)
 target_link_libraries(cosmosim_physics PRIVATE m)

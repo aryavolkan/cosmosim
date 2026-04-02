@@ -22,4 +22,17 @@ void octree_compute_forces(const OctreeNode *pool,
                            double softening,
                            double theta);
 
+/* Find all body indices within radius of (cx,cy,cz).
+   Returns count of neighbors found (capped at buf_capacity). */
+int octree_find_neighbors(const OctreeNode *pool,
+                          int root,
+                          const Body *bodies,
+                          int n,
+                          double cx,
+                          double cy,
+                          double cz,
+                          double radius,
+                          int *neighbor_buf,
+                          int buf_capacity);
+
 #endif

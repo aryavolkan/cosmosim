@@ -20,6 +20,10 @@ typedef struct {
     double accretion_rate;         // SMBH: exponential avg mass inflow
     double luminosity;             // SMBH: eta_eff * accretion_rate
     double lifetime;               // JET: remaining lifetime (seconds)
+    double density;                // SPH: ρ from kernel sum
+    double pressure;               // SPH: P = (γ-1) * ρ * u
+    double internal_energy;        // SPH: u (thermal energy per unit mass)
+    double smoothing_h;            // SPH: adaptive smoothing length
 } Body;
 
 #endif

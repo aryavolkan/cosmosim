@@ -212,6 +212,7 @@ int main(int argc, char **argv)
     double accretion_radius = DEFAULT_ACCRETION_RADIUS;
     double jet_speed = DEFAULT_JET_SPEED;
     double feedback_strength = DEFAULT_FEEDBACK_STRENGTH;
+    /* gas_fraction: reserved for future --gas-fraction CLI flag */
 
     /* Offline render options */
     const char *render_dir = NULL;
@@ -362,7 +363,7 @@ int main(int argc, char **argv)
     rcfg.hdr_enabled = quasar || render_dir;
     rcfg.bloom_iterations = (render_dir || high_fidelity) ? 4 : 2;
     rcfg.lensing_samples = (render_dir || high_fidelity) ? 4 : 1;
-    rcfg.exposure = 1.0f;
+    rcfg.exposure = 0.05f; /* start low — ramps up quickly if scene is dim */
 
     if (renderer_init(&rcfg) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
@@ -474,7 +475,7 @@ int main(int argc, char **argv)
         for (int frame = 0; frame < render_frames; frame++) {
             /* Physics */
             for (int sub = 0; sub < substeps; sub++) {
-                integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
+                integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool, quasar);
                 if (quasar) {
                     quasar_step(bodies, &current_n, n_alloc, &qcfg, dt);
                 }
@@ -628,7 +629,7 @@ int main(int argc, char **argv)
 
             if (!paused) {
                 for (int sub = 0; sub < substeps; sub++) {
-                    integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool);
+                    integrator_step(bodies, current_n, dt, G, SOFTENING, theta, pool, quasar);
                     if (quasar) {
                         quasar_step(bodies, &current_n, n_alloc, &qcfg, dt);
                     }

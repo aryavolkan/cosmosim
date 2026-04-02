@@ -1,4 +1,5 @@
 #include "initial_conditions.h"
+#include "sph.h"
 #include <math.h>
 #include <stdint.h>
 #include <time.h>
@@ -173,6 +174,22 @@ void generate_quasar_galaxy(Body *bodies,
         double dy = bodies[i].y - cy;
         if (dx * dx + dy * dy < inner_radius_sq) {
             bodies[i].type = BODY_GAS;
+        }
+    }
+
+    /* Initialize SPH fields for gas particles */
+    double mean_spacing = disk_radius / sqrt((double)n);
+    for (int i = 1; i < n; i++) {
+        if (bodies[i].type == BODY_GAS) {
+            double dx = bodies[i].x - cx;
+            double dy = bodies[i].y - cy;
+            double r = sqrt(dx * dx + dy * dy);
+            if (r < 1e-10)
+                r = 1e-10;
+            double m_enc = galaxy_mass * (1.0 - exp(-r / (disk_radius / 4.0)));
+            double v_circ_local = sqrt(m_enc / r);
+            bodies[i].internal_energy = 0.5 * v_circ_local * v_circ_local / (SPH_GAMMA - 1.0);
+            bodies[i].smoothing_h = mean_spacing * 2.0;
         }
     }
 }

@@ -5,6 +5,8 @@ in vec3 v_velocity;
 in float v_view_depth;
 in float v_temperature;
 in vec3 v_world_pos;
+in float v_internal_energy;
+in float v_density;
 
 uniform vec3 u_smbh_pos;
 uniform float u_smbh_luminosity;
@@ -47,16 +49,18 @@ void main()
         intensity *= (1.0 + (knot_boost * 0.5 + mass_boost * 0.3));
 
     } else if (body_type == 1) {
-        // GAS: temperature-based + shock front visualization
-        float t = clamp(log(v_mass + 1.0) / 5.0, 0.0, 1.0);
-        vec3 cool_gas = vec3(1.0, 0.4, 0.1);
-        vec3 hot_gas = vec3(1.5, 1.3, 1.2);
+        // GAS: temperature coloring from SPH internal energy
+        float temp = clamp(log(v_internal_energy + 1.0) / 8.0, 0.0, 1.0);
+        vec3 cold_gas  = vec3(0.2, 0.1, 0.4);   // cold: dark purple (molecular clouds)
+        vec3 warm_gas  = vec3(1.0, 0.4, 0.1);   // warm: orange (HII regions)
+        vec3 hot_gas   = vec3(1.5, 1.5, 2.5);   // hot: blue-white (shocked gas)
+        if (temp < 0.5) {
+            color = mix(cold_gas, warm_gas, temp * 2.0);
+        } else {
+            color = mix(warm_gas, hot_gas, (temp - 0.5) * 2.0);
+        }
         float brightness_boost = u_smbh_luminosity * 0.01;
-        color = mix(cool_gas, hot_gas, t) * (1.0 + brightness_boost);
-        // Shock front: high-velocity gas glows blue-white
-        float v_speed = length(v_velocity);
-        float shock = clamp((v_speed - 6.0) / 14.0, 0.0, 1.0);
-        color = mix(color, vec3(0.8, 1.4, 2.5), shock * 0.55);
+        color *= (1.0 + brightness_boost);
 
     } else if (body_type == 4) {
         // DUST: temperature gradient cold → warm → hot near SMBH
