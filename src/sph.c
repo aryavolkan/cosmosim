@@ -149,11 +149,6 @@ void sph_compute_forces(Body *bodies, int n, const OctreeNode *tree)
             double h_avg = 0.5 * (h_i + h_j);
             double rho_j = bodies[j].density;
             double P_j = bodies[j].pressure;
-            double u_j = bodies[j].internal_energy;
-            if (u_j < 1e-15)
-                u_j = 1e-15;
-            double c_j = sqrt(SPH_GAMMA * P_j / (rho_j + 1e-15));
-
             /* Monaghan artificial viscosity */
             double dvx = bodies[i].vx - bodies[j].vx;
             double dvy = bodies[i].vy - bodies[j].vy;
@@ -163,6 +158,7 @@ void sph_compute_forces(Body *bodies, int n, const OctreeNode *tree)
             double Pi_ij = 0.0;
             if (vr < 0.0) { /* particles approaching */
                 double mu = h_avg * vr / (r * r + 0.01 * h_avg * h_avg);
+                double c_j = sqrt(SPH_GAMMA * P_j / (rho_j + 1e-15));
                 double c_avg = 0.5 * (c_i + c_j);
                 double rho_avg = 0.5 * (rho_i + rho_j);
                 double alpha_visc = 1.0;

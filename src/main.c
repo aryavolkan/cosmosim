@@ -213,6 +213,7 @@ int main(int argc, char **argv)
     double jet_speed = DEFAULT_JET_SPEED;
     double feedback_strength = DEFAULT_FEEDBACK_STRENGTH;
     double gas_fraction = 0.2;
+    (void)gas_fraction; /* TODO: pass to initial_conditions for configurable gas ratio */
 
     /* Offline render options */
     const char *render_dir = NULL;
