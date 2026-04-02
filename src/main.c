@@ -363,7 +363,7 @@ int main(int argc, char **argv)
     rcfg.hdr_enabled = quasar || render_dir;
     rcfg.bloom_iterations = (render_dir || high_fidelity) ? 4 : 2;
     rcfg.lensing_samples = (render_dir || high_fidelity) ? 4 : 1;
-    rcfg.exposure = 0.05f; /* start low — ramps up quickly if scene is dim */
+    rcfg.exposure = 0.5f;
 
     if (renderer_init(&rcfg) != 0) {
         fprintf(stderr, "Failed to initialize renderer\n");
@@ -518,9 +518,9 @@ int main(int argc, char **argv)
                 }
 
                 // Smooth camera target
-                render_cam.target_x = 0.95f * render_cam.target_x + 0.05f * mid_x;
-                render_cam.target_y = 0.95f * render_cam.target_y + 0.05f * mid_y;
-                render_cam.target_z = 0.95f * render_cam.target_z + 0.05f * mid_z;
+                render_cam.target_x = 0.8f * render_cam.target_x + 0.2f * mid_x;
+                render_cam.target_y = 0.8f * render_cam.target_y + 0.2f * mid_y;
+                render_cam.target_z = 0.8f * render_cam.target_z + 0.2f * mid_z;
 
                 // Camera distance: based on SMBH separation + neighborhood size
                 // When far apart: zoom out to see both galaxies
@@ -557,9 +557,9 @@ int main(int argc, char **argv)
                     smooth_smbh_init = 1;
                 } else {
                     for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {
-                        smooth_smbh[s][0] = 0.9f * smooth_smbh[s][0] + 0.1f * rcfg.smbhs[s].x;
-                        smooth_smbh[s][1] = 0.9f * smooth_smbh[s][1] + 0.1f * rcfg.smbhs[s].y;
-                        smooth_smbh[s][2] = 0.9f * smooth_smbh[s][2] + 0.1f * rcfg.smbhs[s].z;
+                        smooth_smbh[s][0] = 0.8f * smooth_smbh[s][0] + 0.2f * rcfg.smbhs[s].x;
+                        smooth_smbh[s][1] = 0.8f * smooth_smbh[s][1] + 0.2f * rcfg.smbhs[s].y;
+                        smooth_smbh[s][2] = 0.8f * smooth_smbh[s][2] + 0.2f * rcfg.smbhs[s].z;
                     }
                 }
                 for (int s = 0; s < rcfg.smbh_count && s < MAX_SMBH; s++) {

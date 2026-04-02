@@ -381,19 +381,18 @@ void renderer_draw(const Body *bodies,
             float mass = upload_buf[off + 3];
             total_lum += mass / dist_sq;
         }
-        /* Use total luminance (not average) since additive blending
-           accumulates brightness from all overlapping particles */
-        if (total_lum < 0.001f)
-            total_lum = 0.001f;
+        float avg_lum = count > 0 ? total_lum / (float)count : 0.001f;
+        if (avg_lum < 0.001f)
+            avg_lum = 0.001f;
 
-        float target_exposure = 0.18f / total_lum;
-        if (target_exposure < 0.001f)
-            target_exposure = 0.001f;
-        if (target_exposure > 10.0f)
-            target_exposure = 10.0f;
+        float target_exposure = 0.18f / avg_lum;
+        if (target_exposure < 0.5f)
+            target_exposure = 0.5f;
+        if (target_exposure > 20.0f)
+            target_exposure = 20.0f;
 
         // Cast away const for exposure update (exposure is mutable render state)
-        ((RendererConfig *)rcfg)->exposure = 0.7f * rcfg->exposure + 0.3f * target_exposure;
+        ((RendererConfig *)rcfg)->exposure = 0.9f * rcfg->exposure + 0.1f * target_exposure;
     }
 
     // HDR FBO setup
