@@ -212,8 +212,7 @@ int main(int argc, char **argv)
     double accretion_radius = DEFAULT_ACCRETION_RADIUS;
     double jet_speed = DEFAULT_JET_SPEED;
     double feedback_strength = DEFAULT_FEEDBACK_STRENGTH;
-    double gas_fraction = 0.2;
-    (void)gas_fraction; /* TODO: pass to initial_conditions for configurable gas ratio */
+    /* gas_fraction: reserved for future --gas-fraction CLI flag */
 
     /* Offline render options */
     const char *render_dir = NULL;
@@ -247,8 +246,6 @@ int main(int argc, char **argv)
             jet_speed = atof(argv[++i]);
         } else if (strcmp(argv[i], "--feedback-strength") == 0 && i + 1 < argc) {
             feedback_strength = atof(argv[++i]);
-        } else if (strcmp(argv[i], "--gas-fraction") == 0 && i + 1 < argc) {
-            gas_fraction = atof(argv[++i]);
         } else if (strcmp(argv[i], "--render") == 0 && i + 1 < argc) {
             render_dir = argv[++i];
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
