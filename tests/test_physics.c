@@ -8,6 +8,7 @@
 #include "initial_conditions.h"
 #include "quasar.h"
 #include "sph.h"
+#include "cosmosim_api.h"
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -1042,6 +1043,99 @@ static int test_sph_cooling_reduces_energy(void)
     return 1;
 }
 
+/* ---- API tests ---- */
+
+static int test_api_create_destroy(void)
+{
+    CosmosimConfig cfg = cosmosim_default_config();
+    cfg.n_bodies = 1000;
+    cfg.merger = 0;
+    cfg.quasar = 0;
+
+    SimHandle h = cosmosim_create(cfg);
+    ASSERT(h != NULL, "handle should be non-null");
+
+    const Body *bodies = cosmosim_get_bodies(h);
+    ASSERT(bodies != NULL, "bodies pointer should be non-null");
+
+    int count = cosmosim_get_count(h);
+    ASSERT(count == 1000, "body count should match requested n_bodies");
+
+    int active = cosmosim_get_active_count(h);
+    ASSERT(active == 1000, "all bodies should be active initially");
+
+    double t = cosmosim_get_sim_time(h);
+    ASSERT_NEAR(t, 0.0, 1e-15, "sim time should be 0 at creation");
+
+    cosmosim_destroy(h);
+    return 1;
+}
+
+static int test_api_step(void)
+{
+    CosmosimConfig cfg = cosmosim_default_config();
+    cfg.n_bodies = 500;
+    cfg.merger = 0;
+    cfg.quasar = 0;
+
+    SimHandle h = cosmosim_create(cfg);
+    ASSERT(h != NULL, "handle should be non-null");
+
+    cosmosim_step(h);
+
+    double t = cosmosim_get_sim_time(h);
+    double expected = cfg.dt * cfg.substeps;
+    ASSERT_NEAR(t, expected, 1e-12, "sim time should advance by dt*substeps");
+
+    const Body *bodies = cosmosim_get_bodies(h);
+    int has_nonzero_vel = 0;
+    int count = cosmosim_get_count(h);
+    for (int i = 0; i < count; i++) {
+        if (bodies[i].vx != 0.0 || bodies[i].vy != 0.0 || bodies[i].vz != 0.0) {
+            has_nonzero_vel = 1;
+            break;
+        }
+    }
+    ASSERT(has_nonzero_vel, "some bodies should have nonzero velocity after step");
+
+    cosmosim_destroy(h);
+    return 1;
+}
+
+static int test_api_quasar_mode(void)
+{
+    CosmosimConfig cfg = cosmosim_default_config();
+    cfg.n_bodies = 1000;
+    cfg.merger = 1;
+    cfg.quasar = 1;
+
+    SimHandle h = cosmosim_create(cfg);
+    ASSERT(h != NULL, "handle should be non-null");
+
+    /* Verify SMBH exists */
+    const Body *bodies = cosmosim_get_bodies(h);
+    int count = cosmosim_get_count(h);
+    int smbh_found = 0;
+    for (int i = 0; i < count; i++) {
+        if (bodies[i].type == BODY_SMBH && bodies[i].mass > 0.0) {
+            smbh_found = 1;
+            break;
+        }
+    }
+    ASSERT(smbh_found, "merger+quasar should have at least one SMBH");
+
+    /* Step 5 times without crash */
+    for (int i = 0; i < 5; i++) {
+        cosmosim_step(h);
+    }
+
+    int active = cosmosim_get_active_count(h);
+    ASSERT(active > 0, "should have active bodies after stepping");
+
+    cosmosim_destroy(h);
+    return 1;
+}
+
 /* ---- main ---- */
 
 int main(void)
@@ -1102,6 +1196,11 @@ int main(void)
 
     // SPH cooling tests
     RUN_TEST(test_sph_cooling_reduces_energy);
+
+    // API tests
+    RUN_TEST(test_api_create_destroy);
+    RUN_TEST(test_api_step);
+    RUN_TEST(test_api_quasar_mode);
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
