@@ -161,7 +161,7 @@ COSMOSIM_API int cosmosim_get_active_count(SimHandle handle)
 {
     if (!handle)
         return 0;
-    SimState *s = (SimState *)handle;
+    const SimState *s = (const SimState *)handle;
     int count = 0;
     for (int i = 0; i < s->current_n; i++) {
         if (s->bodies[i].mass > 0.0)
