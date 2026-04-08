@@ -28,6 +28,10 @@ typedef struct {
 
 typedef void* SimHandle;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 COSMOSIM_API CosmosimConfig cosmosim_default_config(void);
 COSMOSIM_API SimHandle cosmosim_create(CosmosimConfig config);
 COSMOSIM_API void cosmosim_step(SimHandle handle);
@@ -36,5 +40,9 @@ COSMOSIM_API int cosmosim_get_count(SimHandle handle);
 COSMOSIM_API int cosmosim_get_active_count(SimHandle handle);
 COSMOSIM_API double cosmosim_get_sim_time(SimHandle handle);
 COSMOSIM_API void cosmosim_destroy(SimHandle handle);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* COSMOSIM_API_H */

@@ -8,7 +8,7 @@
 #include "quasar.h"
 
 #define G          1.0
-#define SOFTENING  0.5
+#define SOFTENING  1.5
 
 /* Galaxy generation parameters */
 #define GALAXY_MASS    100.0
