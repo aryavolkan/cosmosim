@@ -4,3 +4,5 @@ frames/
 render_output/
 screenshots/
 *.mp4
+.worktrees/
+.superpowers/
