@@ -51,6 +51,22 @@ if(OpenMP_C_FOUND)
     target_link_libraries(cosmosim_physics PRIVATE OpenMP::OpenMP_C)
 endif()
 
+# Shared library for UE plugin (physics only, no renderer/OpenGL)
+add_library(cosmosim_shared SHARED
+    src/octree.c src/integrator.c src/initial_conditions.c
+    src/quasar.c src/sph.c src/cosmosim_api.c
+)
+target_include_directories(cosmosim_shared PUBLIC src/)
+target_compile_definitions(cosmosim_shared PRIVATE COSMOSIM_BUILDING_DLL)
+set_target_properties(cosmosim_shared PROPERTIES
+    OUTPUT_NAME cosmosim
+    C_VISIBILITY_PRESET hidden
+)
+if(OpenMP_C_FOUND)
+    target_link_libraries(cosmosim_shared PRIVATE OpenMP::OpenMP_C)
+endif()
+target_link_libraries(cosmosim_shared PRIVATE m)
+
 # Main executable
 add_executable(cosmosim
     src/main.c
