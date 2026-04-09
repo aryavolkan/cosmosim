@@ -18,7 +18,8 @@ public class CosmosimPlugin : ModuleRules
             "RenderCore",
             "RHI",
             "Slate",
-            "SlateCore"
+            "SlateCore",
+            "UMG"
         });
 
         string ThirdPartyPath = Path.Combine(ModuleDirectory, "..", "..", "ThirdParty", "libcosmosim");

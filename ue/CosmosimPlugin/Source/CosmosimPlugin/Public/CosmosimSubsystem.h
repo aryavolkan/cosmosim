@@ -5,11 +5,12 @@
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
 #include <atomic>
-#include "CosmosimSubsystem.generated.h"
 
 extern "C" {
     #include "cosmosim_api.h"
 }
+
+#include "CosmosimSubsystem.generated.h"
 
 struct FCosmosimBodyGPU
 {
