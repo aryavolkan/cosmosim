@@ -1,13 +1,14 @@
 #include "CosmosimHUD.h"
 #include "CosmosimSubsystem.h"
 #include "Components/TextBlock.h"
-#include "Kismet/GameplayStatics.h"
 
 void UCosmosimHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
-    UGameInstance* GI = UGameplayStatics::GetGameInstance(GetWorld());
+    UWorld* World = GetWorld();
+    if (!World) return;
+    UGameInstance* GI = World->GetGameInstance();
     if (!GI) return;
 
     UCosmosimSubsystem* Sub = GI->GetSubsystem<UCosmosimSubsystem>();

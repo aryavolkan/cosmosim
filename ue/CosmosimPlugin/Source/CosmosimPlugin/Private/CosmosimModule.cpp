@@ -1,5 +1,4 @@
 #include "CosmosimModule.h"
-#include "Interfaces/IPluginManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
 
@@ -7,9 +6,16 @@
 
 void FCosmosimModule::StartupModule()
 {
-    FString LibDir = FPaths::Combine(
-        IPluginManager::Get().FindPlugin(TEXT("CosmosimPlugin"))->GetBaseDir(),
-        TEXT("ThirdParty/libcosmosim/lib"));
+    // Locate ThirdParty relative to this plugin's base directory
+    FString PluginBaseDir = FPaths::Combine(
+        FPaths::ProjectPluginsDir(), TEXT("CosmosimPlugin"));
+    if (!FPaths::DirectoryExists(PluginBaseDir))
+    {
+        // Fallback: try engine plugins path
+        PluginBaseDir = FPaths::Combine(
+            FPaths::EnginePluginsDir(), TEXT("CosmosimPlugin"));
+    }
+    FString LibDir = FPaths::Combine(PluginBaseDir, TEXT("ThirdParty/libcosmosim/lib"));
 
 #if PLATFORM_MAC
     FString LibName = TEXT("libcosmosim.dylib");

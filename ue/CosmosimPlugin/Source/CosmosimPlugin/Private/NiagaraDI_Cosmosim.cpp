@@ -1,7 +1,7 @@
 #include "NiagaraDI_Cosmosim.h"
 #include "NiagaraTypes.h"
-#include "NiagaraFunctionLibrary.h"
-#include "Kismet/GameplayStatics.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 
 static const FName GetNumBodiesName(TEXT("GetNumBodies"));
 static const FName GetBodyPositionName(TEXT("GetBodyPosition"));
@@ -16,7 +16,6 @@ static const FName GetBodySpinAxisName(TEXT("GetBodySpinAxis"));
 
 UNiagaraDI_Cosmosim::UNiagaraDI_Cosmosim()
 {
-    Proxy.Reset(new FNiagaraDataInterfaceProxy());
 }
 
 void UNiagaraDI_Cosmosim::GetFunctions(
@@ -159,26 +158,32 @@ void UNiagaraDI_Cosmosim::GetVMExternalFunction(
         OutFunc = FVMExternalFunction::CreateUObject(this, &UNiagaraDI_Cosmosim::GetBodySpinAxis);
 }
 
+static UCosmosimSubsystem* GetCosmosimSubsystem()
+{
+    if (!GEngine) return nullptr;
+    const TIndirectArray<FWorldContext>& Contexts = GEngine->GetWorldContexts();
+    for (int32 i = 0; i < Contexts.Num(); ++i)
+    {
+        UWorld* World = Contexts[i].World();
+        if (!World) continue;
+        UGameInstance* GI = World->GetGameInstance();
+        if (!GI) continue;
+        UCosmosimSubsystem* Sub = GI->GetSubsystem<UCosmosimSubsystem>();
+        if (Sub) return Sub;
+    }
+    return nullptr;
+}
+
 const FCosmosimBodyGPU* UNiagaraDI_Cosmosim::GetCurrentBuffer() const
 {
-    UWorld* World = GEngine->GetWorldContexts()[0].World();
-    if (!World) return nullptr;
-    UGameInstance* GI = World->GetGameInstance();
-    if (!GI) return nullptr;
-    UCosmosimSubsystem* Sub = GI->GetSubsystem<UCosmosimSubsystem>();
-    if (!Sub) return nullptr;
-    return Sub->GetReadBuffer();
+    UCosmosimSubsystem* Sub = GetCosmosimSubsystem();
+    return Sub ? Sub->GetReadBuffer() : nullptr;
 }
 
 int UNiagaraDI_Cosmosim::GetCurrentActiveCount() const
 {
-    UWorld* World = GEngine->GetWorldContexts()[0].World();
-    if (!World) return 0;
-    UGameInstance* GI = World->GetGameInstance();
-    if (!GI) return 0;
-    UCosmosimSubsystem* Sub = GI->GetSubsystem<UCosmosimSubsystem>();
-    if (!Sub) return 0;
-    return Sub->GetActiveCount();
+    UCosmosimSubsystem* Sub = GetCosmosimSubsystem();
+    return Sub ? Sub->GetActiveCount() : 0;
 }
 
 void UNiagaraDI_Cosmosim::GetNumBodies(FVectorVMExternalFunctionContext& Context)

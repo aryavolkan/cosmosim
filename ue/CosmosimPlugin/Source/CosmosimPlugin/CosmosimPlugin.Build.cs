@@ -11,13 +11,12 @@ public class CosmosimPlugin : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "InputCore",
+            "EnhancedInput",
             "Niagara",
             "NiagaraCore",
-            "NiagaraShader",
             "RenderCore",
             "RHI",
-            "EnhancedInput",
-            "UMG",
             "Slate",
             "SlateCore"
         });
